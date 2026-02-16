@@ -143,6 +143,11 @@ class Menu extends Container {
             icon: createSvg(sceneExport),
             isEnabled: () => !events.invoke('scene.empty'),
             onSelect: () => events.invoke('scene.export', 'viewer')
+        }, {
+            text: localize('menu.file.export.config'),
+            icon: createSvg(sceneExport),
+            isEnabled: () => !events.invoke('scene.empty'),
+            onSelect: () => events.invoke('scene.export', 'config')
         }]);
 
         const openRecentMenuPanel = new MenuPanel([]);

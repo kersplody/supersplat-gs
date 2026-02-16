@@ -1270,6 +1270,33 @@ const serializeViewer = async (splats: Splat[], serializeSettings: SerializeSett
     }
 };
 
+const mergeViewerSettings = (viewerSettings?: ExperienceSettings): ExperienceSettings => {
+    const settings = viewerSettings ?? {} as ExperienceSettings;
+
+    return {
+        camera: {
+            fov: 50,
+            position: [2, 2, -2],
+            target: [0, 0, 0],
+            startAnim: 'none',
+            animTrack: undefined,
+            ...settings.camera
+        },
+        background: {
+            color: [0.4, 0.4, 0.4],
+            ...settings.background
+        },
+        animTracks: settings.animTracks ?? []
+    };
+};
+
+const serializeViewerConfig = async (experienceSettings: ExperienceSettings, fs: FileSystem): Promise<void> => {
+    const mergedSettings = mergeViewerSettings(experienceSettings);
+    const writer = await fs.createWriter('settings.json');
+    await writer.write(new TextEncoder().encode(JSON.stringify(mergedSettings)));
+    await writer.close();
+};
+
 // SOG serialization using splat-transform library
 
 type SogSettings = SerializeSettings & {
@@ -1302,6 +1329,7 @@ export {
     serializeSplat,
     serializeSog,
     serializeViewer,
+    serializeViewerConfig,
     AnimTrack,
     ExperienceSettings,
     SerializeSettings,

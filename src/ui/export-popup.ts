@@ -26,7 +26,8 @@ const removeKnownExtension = (filename: string) => {
         '.sog',
         '.spz',
         '.lcc',
-        '.zip'
+        '.zip',
+        '.json'
     ];
 
     for (let i = 0; i < knownExtensions.length; ++i) {
@@ -366,7 +367,8 @@ class ExportPopup extends Container {
                 ply: [compressRow, splatsRow, bandsRow, filenameRow],
                 splat: [splatsRow, filenameRow],
                 sog: [splatsRow, bandsRow, iterationsRow, filenameRow],
-                viewer: [viewerTypeRow, startRow, animationRow, colorRow, fovRow, splatsRow, bandsRow, filenameRow]
+                viewer: [viewerTypeRow, startRow, animationRow, colorRow, fovRow, splatsRow, bandsRow, filenameRow],
+                config: [startRow, animationRow, colorRow, fovRow, filenameRow]
             }[exportType];
 
             allRows.forEach((r) => {
@@ -406,6 +408,9 @@ class ExportPopup extends Container {
                     break;
                 case 'viewer':
                     updateExtension(viewerTypeSelect.value === 'html' ? '.html' : '.zip');
+                    break;
+                case 'config':
+                    filenameEntry.value = 'settings.json';
                     break;
             }
 
@@ -472,7 +477,7 @@ class ExportPopup extends Container {
                 };
             };
 
-            const assembleViewerOptions = () : SceneExportOptions => {
+            const buildExperienceSettings = (): ExperienceSettings => {
                 // extract camera starting pos
                 let pose;
                 switch (startSelect.value) {
@@ -542,6 +547,12 @@ class ExportPopup extends Container {
                     animTracks
                 };
 
+                return experienceSettings;
+            };
+
+            const assembleViewerOptions = () : SceneExportOptions => {
+                const experienceSettings = buildExperienceSettings();
+
                 return {
                     filename: filenameEntry.value,
                     splatIdx: splatsSelect.value === 'all' ? 'all' : splatsSelect.value,
@@ -550,6 +561,20 @@ class ExportPopup extends Container {
                     },
                     viewerExportSettings: {
                         type: viewerTypeSelect.value,
+                        experienceSettings
+                    }
+                };
+            };
+
+            const assembleConfigOptions = (): SceneExportOptions => {
+                const experienceSettings = buildExperienceSettings();
+
+                return {
+                    filename: filenameEntry.value,
+                    splatIdx: 'all',
+                    serializeSettings: { },
+                    viewerExportSettings: {
+                        type: 'html',
                         experienceSettings
                     }
                 };
@@ -573,6 +598,9 @@ class ExportPopup extends Container {
                             break;
                         case 'viewer':
                             resolve(assembleViewerOptions());
+                            break;
+                        case 'config':
+                            resolve(assembleConfigOptions());
                             break;
                     }
                 };

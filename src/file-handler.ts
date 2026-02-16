@@ -1,4 +1,4 @@
-import { path, Quat, Vec3 } from 'playcanvas';
+import { Color, path, Quat, Vec3 } from 'playcanvas';
 
 import { CreateDropHandler } from './drop-handler';
 import { ElementType } from './element';
@@ -6,15 +6,15 @@ import { Events } from './events';
 import { BrowserFileSystem, MappedReadFileSystem } from './io';
 import { Scene } from './scene';
 import { Splat } from './splat';
-import { serializePly, serializePlyCompressed, SerializeSettings, serializeSog, serializeSplat, serializeViewer, SogSettings, ViewerExportSettings } from './splat-serialize';
+import { serializePly, serializePlyCompressed, SerializeSettings, serializeSog, serializeSplat, serializeViewer, serializeViewerConfig, SogSettings, ViewerExportSettings, ExperienceSettings } from './splat-serialize';
 import { localize } from './ui/localization';
 
 // ts compiler and vscode find this type, but eslint does not
 type FilePickerAcceptType = unknown;
 
-type ExportType = 'ply' | 'splat' | 'sog' | 'viewer';
+type ExportType = 'ply' | 'splat' | 'sog' | 'viewer' | 'config';
 
-type FileType = 'ply' | 'compressedPly' | 'splat' | 'sog' | 'htmlViewer' | 'packageViewer';
+type FileType = 'ply' | 'compressedPly' | 'splat' | 'sog' | 'htmlViewer' | 'packageViewer' | 'viewerConfig';
 
 interface SceneExportOptions {
     filename: string;
@@ -92,6 +92,12 @@ const filePickerTypes: { [key: string]: FilePickerAcceptType } = {
         description: 'Viewer ZIP',
         accept: {
             'application/zip': ['.zip']
+        }
+    },
+    'viewerConfig': {
+        description: 'Viewer Config JSON',
+        accept: {
+            'application/json': ['.json']
         }
     }
 };
@@ -182,6 +188,93 @@ const loadCameraPoses = async (file: ImportFile, events: Events) => {
                 });
             }
         });
+    }
+};
+
+const loadViewerSettings = async (file: ImportFile, events: Events) => {
+    const response = new Response(file.contents);
+    const settings = await response.json() as ExperienceSettings;
+
+    if (!settings || typeof settings !== 'object') {
+        throw new Error('Invalid settings.json format');
+    }
+
+    const setCameraPose = (position: number[], target: number[]) => {
+        if (position?.length >= 3 && target?.length >= 3) {
+            events.fire('camera.setPose', {
+                position: new Vec3(position[0], position[1], position[2]),
+                target: new Vec3(target[0], target[1], target[2])
+            }, 0);
+        }
+    };
+
+    if (typeof settings.camera?.fov === 'number') {
+        events.fire('camera.setFov', settings.camera.fov);
+    }
+
+    if (settings.background?.color?.length >= 3) {
+        events.fire('setBgClr', new Color(
+            settings.background.color[0],
+            settings.background.color[1],
+            settings.background.color[2],
+            1
+        ));
+    }
+
+    const animTrack = events.invoke('camera.animTrack') as { clear: () => void };
+    animTrack?.clear?.();
+
+    const tracks = settings.animTracks ?? [];
+    const trackName = settings.camera?.animTrack;
+    const cameraTrack = tracks.find((track) => {
+        return track.target === 'camera' && (!trackName || track.name === trackName);
+    });
+
+    if (cameraTrack?.keyframes?.times?.length > 0) {
+        if (typeof cameraTrack.frameRate === 'number' && cameraTrack.frameRate > 0) {
+            events.fire('timeline.setFrameRate', cameraTrack.frameRate);
+        }
+
+        if (typeof cameraTrack.smoothness === 'number') {
+            events.fire('timeline.setSmoothness', cameraTrack.smoothness);
+        }
+
+        const times = cameraTrack.keyframes.times;
+        const position = cameraTrack.keyframes.values?.position ?? [];
+        const target = cameraTrack.keyframes.values?.target ?? [];
+        const count = Math.min(times.length, Math.floor(position.length / 3), Math.floor(target.length / 3));
+
+        let maxFrame = 0;
+        for (let i = 0; i < count; ++i) {
+            const frame = Math.round(times[i]);
+            if (!Number.isFinite(frame)) continue;
+
+            events.fire('camera.addPose', {
+                name: `${cameraTrack.name}_${i}`,
+                frame,
+                position: new Vec3(position[i * 3], position[i * 3 + 1], position[i * 3 + 2]),
+                target: new Vec3(target[i * 3], target[i * 3 + 1], target[i * 3 + 2])
+            });
+
+            maxFrame = Math.max(maxFrame, frame);
+        }
+
+        const frameRate = cameraTrack.frameRate;
+        const durationFrames = (typeof cameraTrack.duration === 'number' && typeof frameRate === 'number' && frameRate > 0) ?
+            Math.round(cameraTrack.duration * frameRate) :
+            maxFrame + 1;
+        const timelineFrames = Math.max(maxFrame + 1, durationFrames);
+
+        if (timelineFrames > 0) {
+            events.fire('timeline.setFrames', timelineFrames);
+            events.fire('timeline.setFrame', 0);
+        }
+
+        if (settings.camera?.startAnim !== 'animTrack') {
+            setCameraPose(settings.camera?.position, settings.camera?.target);
+        }
+    } else {
+        setCameraPose(settings.camera?.position, settings.camera?.target);
     }
 };
 
@@ -328,6 +421,8 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
                 } else if (filename.endsWith('images.txt')) {
                     // load colmap frames
                     await loadImagesTxt(files[i], events);
+                } else if (filename.endsWith('settings.json')) {
+                    await loadViewerSettings(files[i], events);
                 } else if (filename.endsWith('.json')) {
                     // load inria camera poses
                     await loadCameraPoses(files[i], events);
@@ -479,6 +574,7 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
 
         const fileType: FileType =
             (exportType === 'viewer') ? (options.viewerExportSettings!.type === 'zip' ? 'packageViewer' : 'htmlViewer') :
+                (exportType === 'config') ? 'viewerConfig' :
                 (exportType === 'ply') ? (options.compressedPly ? 'compressedPly' : 'ply') :
                     (exportType === 'sog') ? 'sog' : 'splat';
 
@@ -547,6 +643,9 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
                 case 'htmlViewer':
                 case 'packageViewer':
                     await serializeViewer(splats, serializeSettings, { ...viewerExportSettings!, events }, fs);
+                    break;
+                case 'viewerConfig':
+                    await serializeViewerConfig(viewerExportSettings?.experienceSettings, fs);
                     break;
             }
 
