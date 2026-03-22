@@ -140,11 +140,6 @@ type ViewerExportSettings = {
 
 type LegacyExperienceSettings = {
     scene_meas_scale?: number,
-    playcanvas_scene_xyz_deg_x_plus_90?: {
-        x: number,
-        y: number,
-        z: number
-    },
     animTracks: Array<{
         name: string,
         duration: number,
@@ -1368,13 +1363,11 @@ const mergeViewerSettings = (viewerSettings?: ExperienceSettings): LegacyExperie
     const manualSettings = settings as ExperienceSettings & {
         camera?: Partial<LegacyExperienceSettings['camera']>;
         scene_meas_scale?: number;
-        playcanvas_scene_xyz_deg_x_plus_90?: LegacyExperienceSettings['playcanvas_scene_xyz_deg_x_plus_90'];
     };
 
     if (manualSettings.camera) {
         return {
             scene_meas_scale: manualSettings.scene_meas_scale ?? 1,
-            playcanvas_scene_xyz_deg_x_plus_90: manualSettings.playcanvas_scene_xyz_deg_x_plus_90,
             background: {
                 color: [0.4, 0.4, 0.4],
                 ...manualSettings.background
