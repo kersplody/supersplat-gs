@@ -1,4 +1,4 @@
-import { Container, Label, NumericInput } from '@playcanvas/pcui';
+import { Container, Label, NumericInput, SelectInput } from '@playcanvas/pcui';
 import { Entity, Mat4, Quat, TranslateGizmo, Vec3 } from 'playcanvas';
 
 import { EntityTransformOp } from '../edit-ops';
@@ -79,6 +79,17 @@ class MeasureTool {
             min: 0.0001,
             value: 0
         });
+
+        const lengthUnit = new SelectInput({
+            class: 'measure-unit-select',
+            defaultValue: 'm',
+            options: [
+                { v: 'm', t: 'm' },
+                { v: 'cm', t: 'cm' },
+                { v: 'ft', t: 'ft' },
+                { v: 'in', t: 'in' }
+            ]
+        });
         let suppressUI = 0;
 
         const selectToolbar = new Container({
@@ -92,6 +103,7 @@ class MeasureTool {
 
         selectToolbar.append(lengthLabel);
         selectToolbar.append(lengthInput);
+        selectToolbar.append(lengthUnit);
         canvasContainer.append(selectToolbar);
 
         const gizmo = new TranslateGizmo(scene.camera.camera, scene.gizmoLayer);
@@ -104,6 +116,41 @@ class MeasureTool {
         const getMeasureScale = () => {
             const value = events.invoke('view.measureScale');
             return Number.isFinite(value) && value > 0 ? value : 1;
+        };
+
+        const formatLength = (value: number) => {
+            return value >= 100 ? value.toFixed(1) : value.toFixed(2);
+        };
+
+        const units = {
+            m: {
+                toDisplay: (meters: number) => meters,
+                toMeters: (value: number) => value,
+                suffix: 'm',
+                convertedLabel: (meters: number) => `${formatLength(meters * 3.280839895)} ft`
+            },
+            cm: {
+                toDisplay: (meters: number) => meters * 100,
+                toMeters: (value: number) => value / 100,
+                suffix: 'cm',
+                convertedLabel: (meters: number) => `${formatLength(meters)} m`
+            },
+            ft: {
+                toDisplay: (meters: number) => meters * 3.280839895,
+                toMeters: (value: number) => value / 3.280839895,
+                suffix: 'ft',
+                convertedLabel: (meters: number) => `${formatLength(meters)} m`
+            },
+            in: {
+                toDisplay: (meters: number) => meters * 39.37007874,
+                toMeters: (value: number) => value / 39.37007874,
+                suffix: 'in',
+                convertedLabel: (meters: number) => `${formatLength(meters)} m`
+            }
+        } as const;
+
+        const getCurrentUnit = () => {
+            return units[lengthUnit.value as keyof typeof units] ? lengthUnit.value as keyof typeof units : 'm';
         };
 
         // get world space point
@@ -132,14 +179,18 @@ class MeasureTool {
             if (splat && splat.measurePoints.length === 2) {
                 getPoint(0, p0);
                 getPoint(1, p1);
-                const len = p0.distance(p1) * getMeasureScale();
+                const lenMeters = p0.distance(p1) * getMeasureScale();
+                const unit = getCurrentUnit();
+                const len = units[unit].toDisplay(lenMeters);
 
                 suppressUI++;
                 lengthInput.value = len;
+                lengthInput.placeholder = `${units[unit].suffix} (${units[unit].convertedLabel(lenMeters)})`;
                 lengthInput.enabled = true;
                 suppressUI--;
             } else {
                 lengthInput.enabled = false;
+                lengthInput.placeholder = getCurrentUnit();
             }
         };
 
@@ -217,7 +268,8 @@ class MeasureTool {
             }
 
             const measureScale = getMeasureScale();
-            const rawLength = newLength / measureScale;
+            const unit = getCurrentUnit();
+            const rawLength = units[unit].toMeters(newLength) / measureScale;
             const scale = rawLength / startLen;
 
             // calculate mid point
@@ -273,6 +325,10 @@ class MeasureTool {
         lengthInput.on('slider:mouseup', () => {
             endScale();
             dragging = false;
+        });
+
+        lengthUnit.on('change', () => {
+            updateVisuals();
         });
 
         events.on('select.delete', () => {
