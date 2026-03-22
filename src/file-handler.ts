@@ -617,8 +617,8 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
         const fileType: FileType =
             (exportType === 'viewer') ? (options.viewerExportSettings!.type === 'zip' ? 'packageViewer' : 'htmlViewer') :
                 (exportType === 'config') ? 'viewerConfig' :
-                (exportType === 'ply') ? (options.compressedPly ? 'compressedPly' : 'ply') :
-                    (exportType === 'sog') ? 'sog' : 'splat';
+                    (exportType === 'ply') ? (options.compressedPly ? 'compressedPly' : 'ply') :
+                        (exportType === 'sog') ? 'sog' : 'splat';
 
         if (hasFilePicker) {
             try {
