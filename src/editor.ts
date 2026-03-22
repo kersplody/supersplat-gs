@@ -123,6 +123,26 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
         setCameraFov(fov);
     });
 
+    // view.measureScale
+
+    let measureScale = 1;
+
+    const setMeasureScale = (value: number) => {
+        const nextValue = Number.isFinite(value) && value > 0 ? value : 1;
+        if (nextValue !== measureScale) {
+            measureScale = nextValue;
+            events.fire('view.measureScale', measureScale);
+        }
+    };
+
+    events.function('view.measureScale', () => {
+        return measureScale;
+    });
+
+    events.on('view.setMeasureScale', (value: number) => {
+        setMeasureScale(value);
+    });
+
     // camera.tonemapping
 
     events.function('camera.tonemapping', () => {
@@ -725,6 +745,7 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
     events.fire('camera.fov', scene.camera.fov);
     events.fire('camera.overlay', cameraOverlay);
     events.fire('view.bands', viewBands);
+    events.fire('view.measureScale', measureScale);
 
     // doc serialization
     events.function('docSerialize.view', () => {
@@ -740,7 +761,8 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
             showGrid: events.invoke('grid.visible'),
             showBound: events.invoke('camera.bound'),
             showCameraPoses: events.invoke('camera.showPoses'),
-            flySpeed: events.invoke('camera.flySpeed')
+            flySpeed: events.invoke('camera.flySpeed'),
+            measureScale: events.invoke('view.measureScale')
         };
     });
 
@@ -756,6 +778,7 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
         events.fire('camera.setBound', docView.showBound);
         events.fire('camera.setShowPoses', docView.showCameraPoses ?? false);
         events.fire('camera.setFlySpeed', docView.flySpeed);
+        events.fire('view.setMeasureScale', docView.measureScale ?? 1);
     });
 };
 

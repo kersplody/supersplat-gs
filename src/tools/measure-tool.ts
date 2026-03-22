@@ -101,6 +101,11 @@ class MeasureTool {
         let active = false;
         let splat: Splat;
 
+        const getMeasureScale = () => {
+            const value = events.invoke('view.measureScale');
+            return Number.isFinite(value) && value > 0 ? value : 1;
+        };
+
         // get world space point
         const getPoint = (index: number, result: Vec3) => {
             splat.worldTransform.transformPoint(splat.measurePoints[index], result);
@@ -127,7 +132,7 @@ class MeasureTool {
             if (splat && splat.measurePoints.length === 2) {
                 getPoint(0, p0);
                 getPoint(1, p1);
-                const len = p0.distance(p1);
+                const len = p0.distance(p1) * getMeasureScale();
 
                 suppressUI++;
                 lengthInput.value = len;
@@ -211,7 +216,9 @@ class MeasureTool {
                 return;
             }
 
-            const scale = newLength / startLen;
+            const measureScale = getMeasureScale();
+            const rawLength = newLength / measureScale;
+            const scale = rawLength / startLen;
 
             // calculate mid point
             p.copy(mid);
@@ -381,6 +388,11 @@ class MeasureTool {
         updateGizmoSize();
         events.on('camera.resize', updateGizmoSize);
         events.on('camera.ortho', updateGizmoSize);
+        events.on('view.measureScale', () => {
+            if (active) {
+                updateVisuals();
+            }
+        });
 
         this.activate = () => {
             active = true;

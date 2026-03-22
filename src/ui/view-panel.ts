@@ -1,4 +1,4 @@
-import { BooleanInput, ColorPicker, Container, Label, SelectInput, SliderInput } from '@playcanvas/pcui';
+import { BooleanInput, ColorPicker, Container, Label, NumericInput, SelectInput, SliderInput } from '@playcanvas/pcui';
 import { Color } from 'playcanvas';
 
 import { Events } from '../events';
@@ -156,6 +156,27 @@ class ViewPanel extends Container {
 
         fovRow.append(fovLabel);
         fovRow.append(fovSlider);
+
+        // measurement scale
+
+        const measurementScaleRow = new Container({
+            class: 'view-panel-row'
+        });
+
+        const measurementScaleLabel = new Label({
+            text: localize('panel.view-options.measurement-scale'),
+            class: 'view-panel-row-label'
+        });
+
+        const measurementScaleInput = new NumericInput({
+            class: 'view-panel-row-number',
+            precision: 4,
+            min: 0.0001,
+            value: 1
+        });
+
+        measurementScaleRow.append(measurementScaleLabel);
+        measurementScaleRow.append(measurementScaleInput);
 
         // sh bands
         const shBandsRow = new Container({
@@ -325,6 +346,7 @@ class ViewPanel extends Container {
         this.append(clrRow);
         this.append(tonemappingRow);
         this.append(fovRow);
+        this.append(measurementScaleRow);
         this.append(shBandsRow);
         this.append(cameraFlySpeedRow);
         this.append(centersSizeRow);
@@ -468,6 +490,16 @@ class ViewPanel extends Container {
 
         fovSlider.on('change', (value: number) => {
             events.fire('camera.setFov', value);
+        });
+
+        // measurement scale
+
+        events.on('view.measureScale', (value: number) => {
+            measurementScaleInput.value = value;
+        });
+
+        measurementScaleInput.on('change', (value: number) => {
+            events.fire('view.setMeasureScale', value);
         });
 
         // tonemapping
