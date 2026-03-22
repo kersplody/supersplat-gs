@@ -180,11 +180,20 @@ const loadCameraPoses = async (file: ImportFile, events: Events) => {
                 // Use fixed offset along Z-axis direction instead of variable dot product
                 vec.copy(z).mulScalar(10).add(p);
 
+                // compute max FOV from intrinsics (vertical or horizontal, whichever is larger)
+                let fov = 60;
+                if (pose.fx && pose.fy && pose.width && pose.height) {
+                    const fovX = 2 * Math.atan(pose.width / (2 * pose.fx)) * (180 / Math.PI);
+                    const fovY = 2 * Math.atan(pose.height / (2 * pose.fy)) * (180 / Math.PI);
+                    fov = Math.max(fovX, fovY);
+                }
+
                 events.fire('camera.addPose', {
                     name: pose.img_name ?? `${file.filename}_${i}`,
                     frame: i,
                     position: new Vec3(-p.x, -p.y, p.z),
-                    target: new Vec3(-vec.x, -vec.y, vec.z)
+                    target: new Vec3(-vec.x, -vec.y, vec.z),
+                    fov
                 });
             }
         });
@@ -199,6 +208,22 @@ const loadViewerSettings = async (file: ImportFile, events: Events) => {
         throw new Error('Invalid settings.json format');
     }
 
+    const manualSettings = settings as ExperienceSettings & {
+        camera?: {
+            fov?: number;
+            position?: number[];
+            target?: number[];
+            startAnim?: 'none' | 'orbit' | 'animTrack';
+            animTrack?: string;
+        };
+    };
+
+    const cameraPose = manualSettings.camera ? {
+        fov: manualSettings.camera.fov,
+        position: manualSettings.camera.position,
+        target: manualSettings.camera.target
+    } : settings.cameras?.[0]?.initial;
+
     const setCameraPose = (position: number[], target: number[]) => {
         if (position?.length >= 3 && target?.length >= 3) {
             events.fire('camera.setPose', {
@@ -208,8 +233,8 @@ const loadViewerSettings = async (file: ImportFile, events: Events) => {
         }
     };
 
-    if (typeof settings.camera?.fov === 'number') {
-        events.fire('camera.setFov', settings.camera.fov);
+    if (typeof cameraPose?.fov === 'number') {
+        events.fire('camera.setFov', cameraPose.fov);
     }
 
     if (settings.background?.color?.length >= 3) {
@@ -225,10 +250,13 @@ const loadViewerSettings = async (file: ImportFile, events: Events) => {
     animTrack?.clear?.();
 
     const tracks = settings.animTracks ?? [];
-    const trackName = settings.camera?.animTrack;
+    const trackName = manualSettings.camera?.animTrack ?? 'cameraAnim';
     const cameraTrack = tracks.find((track) => {
-        return track.target === 'camera' && (!trackName || track.name === trackName);
-    });
+        const candidate = track as typeof track & { target?: string };
+        return candidate.target === 'camera' && (!trackName || track.name === trackName);
+    }) ?? tracks.find((track) => {
+        return !trackName || track.name === trackName;
+    }) ?? tracks[0];
 
     if (cameraTrack?.keyframes?.times?.length > 0) {
         if (typeof cameraTrack.frameRate === 'number' && cameraTrack.frameRate > 0) {
@@ -242,6 +270,7 @@ const loadViewerSettings = async (file: ImportFile, events: Events) => {
         const times = cameraTrack.keyframes.times;
         const position = cameraTrack.keyframes.values?.position ?? [];
         const target = cameraTrack.keyframes.values?.target ?? [];
+        const fov = cameraTrack.keyframes.values?.fov ?? [];
         const count = Math.min(times.length, Math.floor(position.length / 3), Math.floor(target.length / 3));
 
         let maxFrame = 0;
@@ -253,7 +282,8 @@ const loadViewerSettings = async (file: ImportFile, events: Events) => {
                 name: `${cameraTrack.name}_${i}`,
                 frame,
                 position: new Vec3(position[i * 3], position[i * 3 + 1], position[i * 3 + 2]),
-                target: new Vec3(target[i * 3], target[i * 3 + 1], target[i * 3 + 2])
+                target: new Vec3(target[i * 3], target[i * 3 + 1], target[i * 3 + 2]),
+                fov: typeof fov[i] === 'number' ? fov[i] : undefined
             });
 
             maxFrame = Math.max(maxFrame, frame);
@@ -270,11 +300,11 @@ const loadViewerSettings = async (file: ImportFile, events: Events) => {
             events.fire('timeline.setFrame', 0);
         }
 
-        if (settings.camera?.startAnim !== 'animTrack') {
-            setCameraPose(settings.camera?.position, settings.camera?.target);
+        if (manualSettings.camera?.startAnim !== 'animTrack' && settings.startMode !== 'animTrack') {
+            setCameraPose(cameraPose?.position, cameraPose?.target);
         }
     } else {
-        setCameraPose(settings.camera?.position, settings.camera?.target);
+        setCameraPose(cameraPose?.position, cameraPose?.target);
     }
 };
 
@@ -389,15 +419,26 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
     const importFiles = async (files: ImportFile[], animationFrame = false) => {
         const filenames = files.map(f => f.filename.toLowerCase());
 
-        const result = [];
+        const result: Splat[] = [];
 
         if (isPlySequence(filenames)) {
             // handle ply sequence
             events.fire('plysequence.setFrames', files.map(f => f.contents));
             events.fire('timeline.frame', 0);
         } else if (isSog(filenames) || isLcc(filenames)) {
-            // import multi-file splat model (SOG or LCC)
-            result.push(await importSplatModel(files, animationFrame));
+            if (isLcc(filenames)) {
+                const response = await events.invoke('showPopup', {
+                    type: 'okcancel',
+                    header: 'LCC',
+                    message: localize('popup.lcc-upload-warning'),
+                    link: `${window.location.origin}/upload`
+                });
+                if (response.action === 'cancel') {
+                    return result;
+                }
+            }
+            const model = await importSplatModel(files, animationFrame);
+            if (model) result.push(model);
         } else {
             // check for unrecognized file types
             for (let i = 0; i < filenames.length; i++) {
@@ -417,7 +458,8 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
                     await events.invoke('doc.load', files[i].contents ?? (await fetch(files[i].url)).arrayBuffer(), files[i].handle);
                 } else if (['.ply', '.splat', '.sog', '.ksplat', '.spz'].some(ext => filename.endsWith(ext))) {
                     // load gaussian splat model
-                    result.push(await importSplatModel([files[i]], animationFrame));
+                    const model = await importSplatModel([files[i]], animationFrame);
+                    if (model) result.push(model);
                 } else if (filename.endsWith('images.txt')) {
                     // load colmap frames
                     await loadImagesTxt(files[i], events);
