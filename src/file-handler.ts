@@ -216,6 +216,12 @@ const loadViewerSettings = async (file: ImportFile, events: Events) => {
             startAnim?: 'none' | 'orbit' | 'animTrack';
             animTrack?: string;
         };
+        scene_meas_scale?: number;
+        playcanvas_scene_xyz_deg_x_plus_90?: {
+            x?: number;
+            y?: number;
+            z?: number;
+        };
     };
 
     const cameraPose = manualSettings.camera ? {
@@ -236,6 +242,11 @@ const loadViewerSettings = async (file: ImportFile, events: Events) => {
     if (typeof cameraPose?.fov === 'number') {
         events.fire('camera.setFov', cameraPose.fov);
     }
+
+    const measureScale = (typeof manualSettings.scene_meas_scale === 'number' && Number.isFinite(manualSettings.scene_meas_scale) && manualSettings.scene_meas_scale > 0) ?
+        manualSettings.scene_meas_scale :
+        1;
+    events.fire('view.setMeasureScale', measureScale);
 
     if (settings.background?.color?.length >= 3) {
         events.fire('setBgClr', new Color(
@@ -306,6 +317,8 @@ const loadViewerSettings = async (file: ImportFile, events: Events) => {
     } else {
         setCameraPose(cameraPose?.position, cameraPose?.target);
     }
+
+    return manualSettings.playcanvas_scene_xyz_deg_x_plus_90;
 };
 
 const removeExtension = (filename: string) => {
@@ -368,6 +381,24 @@ const loadImagesTxt = async (file: ImportFile, events: Events) => {
 
 // initialize file handler events
 const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) => {
+    let sceneRotationHint: { x: number, y: number, z: number } | null = null;
+
+    const applySceneRotationHintToSplat = (splat: Splat) => {
+        if (!sceneRotationHint || !splat) {
+            return;
+        }
+
+        const rotation = new Quat().setFromEulerAngles(sceneRotationHint.x, sceneRotationHint.y, sceneRotationHint.z);
+        splat.move(splat.entity.getLocalPosition(), rotation, splat.entity.getLocalScale());
+    };
+
+    const applySceneRotationHintToAllSplats = () => {
+        if (!sceneRotationHint) {
+            return;
+        }
+
+        (scene.getElementsByType(ElementType.splat) as Splat[]).forEach(applySceneRotationHintToSplat);
+    };
 
     const showLoadError = async (message: string, filename: string) => {
         await events.invoke('showPopup', {
@@ -408,6 +439,7 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
 
             const model = await scene.assetLoader.load(filename, fileSystem, animationFrame);
             await scene.add(model);
+            applySceneRotationHintToSplat(model);
             return model;
         } catch (error) {
             const displayName = files[0]?.filename ?? 'unknown';
@@ -464,7 +496,20 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
                     // load colmap frames
                     await loadImagesTxt(files[i], events);
                 } else if (filename.endsWith('settings.json')) {
-                    await loadViewerSettings(files[i], events);
+                    const hint = await loadViewerSettings(files[i], events);
+                    if (hint &&
+                        Number.isFinite(hint.x) &&
+                        Number.isFinite(hint.y) &&
+                        Number.isFinite(hint.z)) {
+                        sceneRotationHint = {
+                            x: hint.x,
+                            y: hint.y,
+                            z: hint.z
+                        };
+                        applySceneRotationHintToAllSplats();
+                    } else {
+                        sceneRotationHint = null;
+                    }
                 } else if (filename.endsWith('.json')) {
                     // load inria camera poses
                     await loadCameraPoses(files[i], events);

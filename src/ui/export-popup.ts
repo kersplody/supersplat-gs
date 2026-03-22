@@ -567,6 +567,7 @@ class ExportPopup extends Container {
 
             const assembleViewerOptions = () : SceneExportOptions => {
                 const experienceSettings = buildExperienceSettings();
+                (experienceSettings as ExperienceSettings & { scene_meas_scale?: number }).scene_meas_scale = events.invoke('view.measureScale');
 
                 return {
                     filename: filenameEntry.value,
@@ -583,6 +584,7 @@ class ExportPopup extends Container {
 
             const assembleConfigOptions = (): SceneExportOptions => {
                 const experienceSettings = buildExperienceSettings();
+                (experienceSettings as ExperienceSettings & { scene_meas_scale?: number }).scene_meas_scale = events.invoke('view.measureScale');
 
                 return {
                     filename: filenameEntry.value,
