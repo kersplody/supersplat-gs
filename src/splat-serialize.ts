@@ -1328,22 +1328,77 @@ const serializeViewer = async (splats: Splat[], serializeSettings: SerializeSett
     }
 };
 
-const mergeViewerSettings = (viewerSettings?: ExperienceSettings): ExperienceSettings => {
+const mergeViewerSettings = (viewerSettings?: ExperienceSettings) => {
     const settings = viewerSettings ?? {} as ExperienceSettings;
+    const manualSettings = settings as ExperienceSettings & {
+        camera?: {
+            fov?: number;
+            position?: [number, number, number];
+            target?: [number, number, number];
+            startAnim?: 'none' | 'orbit' | 'animTrack';
+            animTrack?: string;
+        };
+    };
+
+    if (manualSettings.camera) {
+        return {
+            background: {
+                color: [0.4, 0.4, 0.4],
+                ...manualSettings.background
+            },
+            camera: {
+                fov: 50,
+                position: [2, 2, -2] as [number, number, number],
+                target: [0, 0, 0] as [number, number, number],
+                startAnim: 'none' as const,
+                animTrack: undefined,
+                ...manualSettings.camera
+            },
+            animTracks: (manualSettings.animTracks ?? []).map((track) => ({
+                ...track,
+                target: (track as typeof track & { target?: string }).target ?? 'camera',
+                keyframes: {
+                    times: track.keyframes?.times ?? [],
+                    values: {
+                        position: track.keyframes?.values?.position ?? [],
+                        target: track.keyframes?.values?.target ?? []
+                    }
+                }
+            }))
+        };
+    }
+
+    const initialCamera = settings.cameras?.[0]?.initial;
+    const startAnim = settings.startMode === 'animTrack' ? 'animTrack' : 'none';
+    const animTrack = startAnim === 'animTrack' ? (settings.animTracks?.[0]?.name ?? 'cameraAnim') : undefined;
 
     return {
-        version: 2,
-        tonemapping: 'none',
-        highPrecisionRendering: false,
         background: {
-            color: [0.4, 0.4, 0.4],
-            ...settings.background
+            color: settings.background?.color ?? [0.4, 0.4, 0.4]
         },
-        postEffectSettings: settings.postEffectSettings ?? defaultPostEffectSettings,
-        animTracks: settings.animTracks ?? [],
-        cameras: settings.cameras ?? [],
-        annotations: settings.annotations ?? [],
-        startMode: settings.startMode ?? 'default'
+        camera: {
+            fov: initialCamera?.fov ?? 50,
+            position: initialCamera?.position ?? [2, 2, -2],
+            target: initialCamera?.target ?? [0, 0, 0],
+            startAnim,
+            animTrack
+        },
+        animTracks: (settings.animTracks ?? []).map((track) => ({
+            duration: track.duration,
+            frameRate: track.frameRate,
+            interpolation: track.interpolation,
+            keyframes: {
+                times: track.keyframes?.times ?? [],
+                values: {
+                    position: track.keyframes?.values?.position ?? [],
+                    target: track.keyframes?.values?.target ?? []
+                }
+            },
+            loopMode: track.loopMode,
+            name: track.name,
+            smoothness: track.smoothness,
+            target: 'camera'
+        }))
     };
 };
 
