@@ -165,6 +165,19 @@ class MeasureTool {
             result.y *= canvasContainer.dom.clientHeight;
         };
 
+        const publishActivePoint = () => {
+            if (splat && active && splat.measureSelection >= 0 && splat.measureSelection < splat.measurePoints.length) {
+                getPoint(splat.measureSelection, p);
+                events.fire('measure.activePoint', {
+                    x: p.x,
+                    y: p.y,
+                    z: p.z
+                });
+            } else {
+                events.fire('measure.activePoint', null);
+            }
+        };
+
         const updateVisuals = () => {
             gizmo.detach();
 
@@ -192,6 +205,8 @@ class MeasureTool {
                 lengthInput.enabled = false;
                 lengthInput.placeholder = getCurrentUnit();
             }
+
+            publishActivePoint();
         };
 
         gizmo.on('render:update', () => {
@@ -227,6 +242,7 @@ class MeasureTool {
                 const p = events.invoke('pivot').transform.position;
                 mat.invert(splat.worldTransform);
                 mat.transformPoint(p, splat.measurePoints[splat.measureSelection]);
+                publishActivePoint();
             }
             scene.forceRender = true;
         });

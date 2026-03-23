@@ -78,6 +78,7 @@ class EditorUI {
             id: 'app-label',
             text: `SUPERGEOSPLAT v${version}`
         });
+        const baseAppLabel = `SUPERGEOSPLAT v${version}`;
 
         // cursor label
         const cursorLabel = new Label({
@@ -85,6 +86,14 @@ class EditorUI {
         });
 
         let fullprecision = '';
+
+        events.on('measure.activePoint', (point?: { x: number, y: number, z: number } | null) => {
+            if (point) {
+                appLabel.text = `${baseAppLabel}\n(x:${point.x.toFixed(4)} y:${point.y.toFixed(4)} z:${point.z.toFixed(4)})`;
+            } else {
+                appLabel.text = baseAppLabel;
+            }
+        });
 
         events.on('camera.focalPointPicked', (details: { position: Vec3 }) => {
             cursorLabel.text = `${details.position.x.toFixed(2)}, ${details.position.y.toFixed(2)}, ${details.position.z.toFixed(2)}`;
