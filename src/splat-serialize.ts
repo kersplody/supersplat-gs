@@ -148,34 +148,7 @@ type ViewerExportSettings = {
     events?: Events;
 };
 
-type LegacyExperienceSettings = CriticalSettingsExtensions & {
-    animTracks: Array<{
-        name: string,
-        duration: number,
-        frameRate: number,
-        loopMode: 'none' | 'repeat' | 'pingpong',
-        interpolation: 'step' | 'spline',
-        smoothness: number,
-        target?: string,
-        keyframes: {
-            times: number[],
-            values: {
-                position: number[],
-                target: number[]
-            }
-        }
-    }>,
-    background: {
-        color: [number, number, number]
-    },
-    camera: {
-        fov: number,
-        position: [number, number, number],
-        target: [number, number, number],
-        startAnim: 'none' | 'orbit' | 'animTrack',
-        animTrack?: string
-    }
-};
+type ExperienceSettingsExport = ExperienceSettings & CriticalSettingsExtensions & Record<string, any>;
 
 type ProgressFunc = (loaded: number, total: number) => void;
 
@@ -1367,84 +1340,38 @@ const serializeViewer = async (splats: Splat[], serializeSettings: SerializeSett
     }
 };
 
-const mergeViewerSettings = (viewerSettings?: ExperienceSettings): LegacyExperienceSettings => {
-    const settings = viewerSettings ?? {} as ExperienceSettings;
-    const manualSettings = settings as ExperienceSettings & CriticalSettingsExtensions & {
-        camera?: Partial<LegacyExperienceSettings['camera']>;
+const mergeExperienceSettings = (baseSettings: Record<string, any> | undefined, nextSettings: ExperienceSettings): ExperienceSettingsExport => {
+    const merged = (baseSettings ? structuredClone(baseSettings) : {
+        version: 2,
+        tonemapping: 'none',
+        highPrecisionRendering: false,
+        background: { color: [0.4, 0.4, 0.4] },
+        postEffectSettings: structuredClone(defaultPostEffectSettings),
+        animTracks: [],
+        cameras: [],
+        annotations: [],
+        startMode: 'default'
+    }) as ExperienceSettingsExport;
+
+    merged.version = 2;
+    merged.tonemapping = merged.tonemapping ?? 'none';
+    merged.highPrecisionRendering = merged.highPrecisionRendering ?? false;
+    merged.background = {
+        ...(merged.background ?? {}),
+        color: nextSettings.background.color
     };
+    merged.postEffectSettings = merged.postEffectSettings ?? structuredClone(defaultPostEffectSettings);
+    merged.animTracks = nextSettings.animTracks;
+    merged.cameras = nextSettings.cameras;
+    merged.annotations = merged.annotations ?? [];
+    merged.startMode = nextSettings.startMode;
 
-    if (manualSettings.camera) {
-        return {
-            scene_meas_scale: manualSettings.scene_meas_scale ?? 1,
-            sceneRotation: manualSettings.sceneRotation,
-            hasFramePreviews: manualSettings.hasFramePreviews,
-            background: {
-                color: [0.4, 0.4, 0.4],
-                ...manualSettings.background
-            },
-            camera: {
-                fov: 50,
-                position: [2, 2, -2] as [number, number, number],
-                target: [0, 0, 0] as [number, number, number],
-                startAnim: 'none' as const,
-                animTrack: undefined,
-                ...manualSettings.camera
-            },
-            animTracks: (manualSettings.animTracks ?? []).map(track => ({
-                ...track,
-                target: (track as typeof track & { target?: string }).target ?? 'camera',
-                keyframes: {
-                    times: track.keyframes?.times ?? [],
-                    values: {
-                        position: track.keyframes?.values?.position ?? [],
-                        target: track.keyframes?.values?.target ?? []
-                    }
-                }
-            }))
-        };
-    }
-
-    const initialCamera = settings.cameras?.[0]?.initial;
-    const startAnim = settings.startMode === 'animTrack' ? 'animTrack' : 'none';
-    const animTrack = startAnim === 'animTrack' ? (settings.animTracks?.[0]?.name ?? 'cameraAnim') : undefined;
-
-    return {
-        scene_meas_scale: manualSettings.scene_meas_scale ?? 1,
-        sceneRotation: manualSettings.sceneRotation,
-        hasFramePreviews: manualSettings.hasFramePreviews,
-        background: {
-            color: settings.background?.color ?? [0.4, 0.4, 0.4]
-        },
-        camera: {
-            fov: initialCamera?.fov ?? 50,
-            position: initialCamera?.position ?? [2, 2, -2],
-            target: initialCamera?.target ?? [0, 0, 0],
-            startAnim,
-            animTrack
-        },
-        animTracks: (settings.animTracks ?? []).map(track => ({
-            duration: track.duration,
-            frameRate: track.frameRate,
-            interpolation: track.interpolation,
-            keyframes: {
-                times: track.keyframes?.times ?? [],
-                values: {
-                    position: track.keyframes?.values?.position ?? [],
-                    target: track.keyframes?.values?.target ?? []
-                }
-            },
-            loopMode: track.loopMode,
-            name: track.name,
-            smoothness: track.smoothness,
-            target: 'camera'
-        }))
-    };
+    return merged;
 };
 
-const serializeViewerConfig = async (experienceSettings: ExperienceSettings, fs: FileSystem): Promise<void> => {
-    const mergedSettings = mergeViewerSettings(experienceSettings);
+const serializeViewerConfig = async (experienceSettings: ExperienceSettingsExport, fs: FileSystem): Promise<void> => {
     const writer = await fs.createWriter('settings.json');
-    await writer.write(new TextEncoder().encode(JSON.stringify(mergedSettings)));
+    await writer.write(new TextEncoder().encode(JSON.stringify(experienceSettings)));
     await writer.close();
 };
 
@@ -1487,6 +1414,7 @@ export {
     Annotation,
     PostEffectSettings,
     defaultPostEffectSettings,
+    mergeExperienceSettings,
     CriticalSettingsExtensions,
     ExperienceSettings,
     SerializeSettings,

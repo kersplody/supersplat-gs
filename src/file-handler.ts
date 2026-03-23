@@ -218,6 +218,7 @@ const loadViewerSettings = async (file: ImportFile, events: Events) => {
         };
     };
 
+    events.fire('settings.setRaw', settings);
     events.fire('settings.setExtensions', {
         sceneRotation: manualSettings.sceneRotation,
         hasFramePreviews: manualSettings.hasFramePreviews

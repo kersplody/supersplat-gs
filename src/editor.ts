@@ -34,6 +34,7 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
 
     let lastExportCursor = 0;
     let measureScale = 1;
+    let preservedSettingsRaw: Record<string, any> | undefined;
     let preservedSettingsExtensions: {
         sceneRotation?: { x: number, y: number, z: number },
         hasFramePreviews?: boolean
@@ -59,6 +60,7 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
         scene.clear();
         editHistory.clear();
         lastExportCursor = 0;
+        preservedSettingsRaw = undefined;
         preservedSettingsExtensions = {};
     });
 
@@ -145,6 +147,14 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
 
     events.on('view.setMeasureScale', (value: number) => {
         setMeasureScale(value);
+    });
+
+    events.function('settings.raw', () => {
+        return preservedSettingsRaw ? structuredClone(preservedSettingsRaw) : undefined;
+    });
+
+    events.on('settings.setRaw', (value?: Record<string, any>) => {
+        preservedSettingsRaw = value ? structuredClone(value) : undefined;
     });
 
     events.function('settings.extensions', () => {
