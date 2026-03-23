@@ -25,6 +25,7 @@ import { Tooltips } from './tooltips';
 import { VideoSettingsDialog } from './video-settings-dialog';
 import { ViewCube } from './view-cube';
 import { ViewPanel } from './view-panel';
+import { Splat } from '../splat';
 import { version } from '../../package.json';
 
 // ts compiler and vscode find this type, but eslint does not
@@ -76,27 +77,67 @@ class EditorUI {
         // app label
         const appLabel = new Label({
             id: 'app-label',
-            text: `SUPERGEOSPLAT v${version}`
+            text: `SUPER GEOSPLAT v${version}`
         });
-        const defaultAppLabel = `SUPERGEOSPLAT v${version}`;
+        const defaultAppLabel = `SUPER GEOSPLAT v${version}`;
+        const copyCalloutButton = document.createElement('button');
+        copyCalloutButton.id = 'copy-callout-button';
+        copyCalloutButton.textContent = 'Copy';
+        copyCalloutButton.hidden = true;
         let activeMeasurePoint: { x: number, y: number, z: number } | null = null;
         const formatVec3 = (value: { x: number, y: number, z: number }, digits = 4) =>
             `${value.x.toFixed(digits)}, ${value.y.toFixed(digits)}, ${value.z.toFixed(digits)}`;
+        const toArray = (value: { x: number, y: number, z: number }, digits = 4) => [
+            Number(value.x.toFixed(digits)),
+            Number(value.y.toFixed(digits)),
+            Number(value.z.toFixed(digits))
+        ];
+        const getMeasurePoints = () => {
+            const splat = events.invoke('selection') as Splat | null;
+            if (!splat) {
+                return [];
+            }
+
+            return splat.measurePoints.map((point) => {
+                const worldPoint = new Vec3();
+                splat.worldTransform.transformPoint(point, worldPoint);
+                return worldPoint;
+            });
+        };
+        const copyCalloutData = async () => {
+            const pose = events.invoke('camera.getPose') as
+                | { position: { x: number, y: number, z: number }, target: { x: number, y: number, z: number }, fov: number }
+                | undefined;
+            if (!pose) {
+                return;
+            }
+
+            const payload = {
+                camera: {
+                    initial: {
+                        position: toArray(pose.position),
+                        target: toArray(pose.target),
+                        fov: Number(pose.fov.toFixed(2))
+                    }
+                },
+                points: getMeasurePoints().map((point) => toArray(point)),
+                position: activeMeasurePoint ? toArray(activeMeasurePoint) : null
+            };
+
+            await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+        };
         const renderMeasurementLabel = () => {
-            if (events.invoke('tool.active') !== 'measure') {
+            const measureMode = events.invoke('tool.active') === 'measure';
+            copyCalloutButton.hidden = !measureMode;
+
+            if (!measureMode) {
                 appLabel.text = defaultAppLabel;
                 return;
             }
 
-            const pose = events.invoke('camera.getPose') as
-                | { position: { x: number, y: number, z: number }, target: { x: number, y: number, z: number }, fov: number }
-                | undefined;
             const pointText = activeMeasurePoint ? formatVec3(activeMeasurePoint) : 'x: y: z:';
-            const camText = pose
-                ? `target ${formatVec3(pose.target)}, pos ${formatVec3(pose.position)}, fov ${pose.fov.toFixed(2)}`
-                : 'target point, cam position, fov';
 
-            appLabel.text = `SUPERGEOSPLAT v${version}\npoint(${pointText})\ncam(${camText})`;
+            appLabel.text = `SUPER GEOSPLAT v${version}\npoint(${pointText})`;
         };
 
         // cursor label
@@ -138,10 +179,25 @@ class EditorUI {
             }, 1000);
         });
 
+        ['pointerdown', 'pointerup', 'pointermove', 'wheel', 'dblclick'].forEach((eventName) => {
+            copyCalloutButton.addEventListener(eventName, (event: Event) => event.stopPropagation());
+        });
+
+        copyCalloutButton.addEventListener('click', async () => {
+            await copyCalloutData();
+
+            const original = copyCalloutButton.textContent;
+            copyCalloutButton.textContent = 'Copied';
+            setTimeout(() => {
+                copyCalloutButton.textContent = original;
+            }, 1000);
+        });
+
         // canvas container
         const canvasContainer = new Container({
             id: 'canvas-container'
         });
+        canvasContainer.dom.appendChild(copyCalloutButton);
 
         // tools container
         const toolsContainer = new Container({

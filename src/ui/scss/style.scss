@@ -107,6 +107,24 @@ body {
     text-align: right;
 }
 
+#copy-callout-button {
+    position: absolute;
+    right: 20px;
+    bottom: 56px;
+    color: $text-primary;
+    background-color: rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    pointer-events: auto;
+
+    &:hover {
+        border-color: $clr-hilight;
+        background-color: rgba(0, 0, 0, 0.65);
+    }
+}
+
 #cursor-label {
     position: absolute;
     left: 12px;
