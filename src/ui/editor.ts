@@ -78,7 +78,26 @@ class EditorUI {
             id: 'app-label',
             text: `SUPERGEOSPLAT v${version}`
         });
-        const baseAppLabel = `SUPERGEOSPLAT v${version}`;
+        const defaultAppLabel = `SUPERGEOSPLAT v${version}`;
+        let activeMeasurePoint: { x: number, y: number, z: number } | null = null;
+        const formatVec3 = (value: { x: number, y: number, z: number }, digits = 4) =>
+            `${value.x.toFixed(digits)}, ${value.y.toFixed(digits)}, ${value.z.toFixed(digits)}`;
+        const renderMeasurementLabel = () => {
+            if (events.invoke('tool.active') !== 'measure') {
+                appLabel.text = defaultAppLabel;
+                return;
+            }
+
+            const pose = events.invoke('camera.getPose') as
+                | { position: { x: number, y: number, z: number }, target: { x: number, y: number, z: number }, fov: number }
+                | undefined;
+            const pointText = activeMeasurePoint ? formatVec3(activeMeasurePoint) : 'x: y: z:';
+            const camText = pose
+                ? `target ${formatVec3(pose.target)}, pos ${formatVec3(pose.position)}, fov ${pose.fov.toFixed(2)}`
+                : 'target point, cam position, fov';
+
+            appLabel.text = `SUPERGEOSPLAT v${version}\npoint(${pointText})\ncam(${camText})`;
+        };
 
         // cursor label
         const cursorLabel = new Label({
@@ -88,11 +107,16 @@ class EditorUI {
         let fullprecision = '';
 
         events.on('measure.activePoint', (point?: { x: number, y: number, z: number } | null) => {
-            if (point) {
-                appLabel.text = `${baseAppLabel}\n(x:${point.x.toFixed(4)} y:${point.y.toFixed(4)} z:${point.z.toFixed(4)})`;
-            } else {
-                appLabel.text = baseAppLabel;
-            }
+            activeMeasurePoint = point ?? null;
+            renderMeasurementLabel();
+        });
+
+        events.on('tool.activated', () => {
+            renderMeasurementLabel();
+        });
+
+        events.on('tool.deactivated', () => {
+            renderMeasurementLabel();
         });
 
         events.on('camera.focalPointPicked', (details: { position: Vec3 }) => {
@@ -153,6 +177,7 @@ class EditorUI {
         const viewCube = new ViewCube(events);
         canvasContainer.append(viewCube);
         events.on('prerender', (cameraMatrix: Mat4) => {
+            renderMeasurementLabel();
             viewCube.update(cameraMatrix);
         });
 
