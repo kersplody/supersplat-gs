@@ -4,7 +4,7 @@ import { Pose } from '../camera-poses';
 import { localize } from './localization';
 import { Events } from '../events';
 import { ExportType, SceneExportOptions } from '../file-handler';
-import { AnimTrack, ExperienceSettings, defaultPostEffectSettings } from '../splat-serialize';
+import { AnimTrack, ExperienceSettings, CriticalSettingsExtensions, defaultPostEffectSettings } from '../splat-serialize';
 import sceneExport from './svg/export.svg';
 
 const createSvg = (svgString: string, args = {}) => {
@@ -567,7 +567,9 @@ class ExportPopup extends Container {
 
             const assembleViewerOptions = () : SceneExportOptions => {
                 const experienceSettings = buildExperienceSettings();
-                (experienceSettings as ExperienceSettings & { scene_meas_scale?: number }).scene_meas_scale = events.invoke('view.measureScale');
+                Object.assign(experienceSettings as ExperienceSettings & CriticalSettingsExtensions, events.invoke('settings.extensions'), {
+                    scene_meas_scale: events.invoke('view.measureScale')
+                } satisfies CriticalSettingsExtensions);
 
                 return {
                     filename: filenameEntry.value,
@@ -584,7 +586,9 @@ class ExportPopup extends Container {
 
             const assembleConfigOptions = (): SceneExportOptions => {
                 const experienceSettings = buildExperienceSettings();
-                (experienceSettings as ExperienceSettings & { scene_meas_scale?: number }).scene_meas_scale = events.invoke('view.measureScale');
+                Object.assign(experienceSettings as ExperienceSettings & CriticalSettingsExtensions, events.invoke('settings.extensions'), {
+                    scene_meas_scale: events.invoke('view.measureScale')
+                } satisfies CriticalSettingsExtensions);
 
                 return {
                     filename: filenameEntry.value,

@@ -4,7 +4,7 @@ import { Pose } from '../camera-poses';
 import { Events } from '../events';
 import { localize } from './localization';
 import { PublishSettings, UserStatus } from '../publish';
-import { AnimTrack, ExperienceSettings, defaultPostEffectSettings } from '../splat-serialize';
+import { AnimTrack, ExperienceSettings, CriticalSettingsExtensions, defaultPostEffectSettings } from '../splat-serialize';
 import sceneExport from './svg/export.svg';
 
 const createSvg = (svgString: string, args = {}) => {
@@ -345,6 +345,10 @@ class PublishSettingsDialog extends Container {
                         annotations: [],
                         startMode: includeAnimation ? 'animTrack' : 'default'
                     };
+
+                    Object.assign(experienceSettings as ExperienceSettings & CriticalSettingsExtensions, events.invoke('settings.extensions'), {
+                        scene_meas_scale: events.invoke('view.measureScale')
+                    } satisfies CriticalSettingsExtensions);
 
                     const serializeSettings = {
                         maxSHBands: 3,

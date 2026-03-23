@@ -33,6 +33,11 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
     };
 
     let lastExportCursor = 0;
+    let measureScale = 1;
+    let preservedSettingsExtensions: {
+        sceneRotation?: { x: number, y: number, z: number },
+        hasFramePreviews?: boolean
+    } = {};
 
     // add unsaved changes warning message.
     window.addEventListener('beforeunload', (e) => {
@@ -54,6 +59,7 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
         scene.clear();
         editHistory.clear();
         lastExportCursor = 0;
+        preservedSettingsExtensions = {};
     });
 
     // When a splat is removed from the scene, remove all edit operations that reference it
@@ -125,8 +131,6 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
 
     // view.measureScale
 
-    let measureScale = 1;
-
     const setMeasureScale = (value: number) => {
         const nextValue = Number.isFinite(value) && value > 0 ? value : 1;
         if (nextValue !== measureScale) {
@@ -141,6 +145,17 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
 
     events.on('view.setMeasureScale', (value: number) => {
         setMeasureScale(value);
+    });
+
+    events.function('settings.extensions', () => {
+        return { ...preservedSettingsExtensions };
+    });
+
+    events.on('settings.setExtensions', (value: typeof preservedSettingsExtensions = {}) => {
+        preservedSettingsExtensions = {
+            sceneRotation: value?.sceneRotation,
+            hasFramePreviews: value?.hasFramePreviews
+        };
     });
 
     // camera.tonemapping

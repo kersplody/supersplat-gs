@@ -6,7 +6,7 @@ import { Events } from './events';
 import { BrowserFileSystem, MappedReadFileSystem } from './io';
 import { Scene } from './scene';
 import { Splat } from './splat';
-import { serializePly, serializePlyCompressed, SerializeSettings, serializeSog, serializeSplat, serializeViewer, serializeViewerConfig, SogSettings, ViewerExportSettings, ExperienceSettings } from './splat-serialize';
+import { serializePly, serializePlyCompressed, SerializeSettings, serializeSog, serializeSplat, serializeViewer, serializeViewerConfig, SogSettings, ViewerExportSettings, ExperienceSettings, CriticalSettingsExtensions } from './splat-serialize';
 import { localize } from './ui/localization';
 
 // ts compiler and vscode find this type, but eslint does not
@@ -208,7 +208,7 @@ const loadViewerSettings = async (file: ImportFile, events: Events) => {
         throw new Error('Invalid settings.json format');
     }
 
-    const manualSettings = settings as ExperienceSettings & {
+    const manualSettings = settings as ExperienceSettings & CriticalSettingsExtensions & {
         camera?: {
             fov?: number;
             position?: number[];
@@ -216,8 +216,12 @@ const loadViewerSettings = async (file: ImportFile, events: Events) => {
             startAnim?: 'none' | 'orbit' | 'animTrack';
             animTrack?: string;
         };
-        scene_meas_scale?: number;
     };
+
+    events.fire('settings.setExtensions', {
+        sceneRotation: manualSettings.sceneRotation,
+        hasFramePreviews: manualSettings.hasFramePreviews
+    });
 
     const cameraPose = manualSettings.camera ? {
         fov: manualSettings.camera.fov,

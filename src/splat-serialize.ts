@@ -132,14 +132,23 @@ type ExperienceSettings = {
     startMode: 'default' | 'animTrack' | 'annotation'
 };
 
+type CriticalSettingsExtensions = {
+    scene_meas_scale?: number,
+    sceneRotation?: {
+        x: number,
+        y: number,
+        z: number
+    },
+    hasFramePreviews?: boolean
+};
+
 type ViewerExportSettings = {
     type: 'html' | 'zip';
     experienceSettings: ExperienceSettings;
     events?: Events;
 };
 
-type LegacyExperienceSettings = {
-    scene_meas_scale?: number,
+type LegacyExperienceSettings = CriticalSettingsExtensions & {
     animTracks: Array<{
         name: string,
         duration: number,
@@ -1360,14 +1369,15 @@ const serializeViewer = async (splats: Splat[], serializeSettings: SerializeSett
 
 const mergeViewerSettings = (viewerSettings?: ExperienceSettings): LegacyExperienceSettings => {
     const settings = viewerSettings ?? {} as ExperienceSettings;
-    const manualSettings = settings as ExperienceSettings & {
+    const manualSettings = settings as ExperienceSettings & CriticalSettingsExtensions & {
         camera?: Partial<LegacyExperienceSettings['camera']>;
-        scene_meas_scale?: number;
     };
 
     if (manualSettings.camera) {
         return {
             scene_meas_scale: manualSettings.scene_meas_scale ?? 1,
+            sceneRotation: manualSettings.sceneRotation,
+            hasFramePreviews: manualSettings.hasFramePreviews,
             background: {
                 color: [0.4, 0.4, 0.4],
                 ...manualSettings.background
@@ -1400,6 +1410,8 @@ const mergeViewerSettings = (viewerSettings?: ExperienceSettings): LegacyExperie
 
     return {
         scene_meas_scale: manualSettings.scene_meas_scale ?? 1,
+        sceneRotation: manualSettings.sceneRotation,
+        hasFramePreviews: manualSettings.hasFramePreviews,
         background: {
             color: settings.background?.color ?? [0.4, 0.4, 0.4]
         },
@@ -1475,6 +1487,7 @@ export {
     Annotation,
     PostEffectSettings,
     defaultPostEffectSettings,
+    CriticalSettingsExtensions,
     ExperienceSettings,
     SerializeSettings,
     SogSettings,
