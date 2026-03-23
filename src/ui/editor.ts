@@ -77,12 +77,12 @@ class EditorUI {
         // app label
         const appLabel = new Label({
             id: 'app-label',
-            text: `SUPER GEOSPLAT v${version}`
+            text: `GEOSPLAT v${version}`
         });
-        const defaultAppLabel = `SUPER GEOSPLAT v${version}`;
+        const defaultAppLabel = `GEOSPLAT v${version}`;
         const copyCalloutButton = document.createElement('button');
         copyCalloutButton.id = 'copy-callout-button';
-        copyCalloutButton.textContent = 'Copy';
+        copyCalloutButton.textContent = 'COPY COORDS';
         copyCalloutButton.hidden = true;
         let activeMeasurePoint: { x: number, y: number, z: number } | null = null;
         const formatVec3 = (value: { x: number, y: number, z: number }, digits = 4) =>
@@ -128,16 +128,16 @@ class EditorUI {
         };
         const renderMeasurementLabel = () => {
             const measureMode = events.invoke('tool.active') === 'measure';
+            const settingsLoaded = !!events.invoke('settings.raw');
+            const settingsStatus = `SETTINGS: ${settingsLoaded ? 'LOADED' : 'NOT LOADED'}`;
             copyCalloutButton.hidden = !measureMode;
 
             if (!measureMode) {
-                appLabel.text = defaultAppLabel;
+                appLabel.text = `${defaultAppLabel}\n${settingsStatus}`;
                 return;
             }
 
-            const pointText = activeMeasurePoint ? formatVec3(activeMeasurePoint) : 'x: y: z:';
-
-            appLabel.text = `SUPER GEOSPLAT v${version}\npoint(${pointText})`;
+            appLabel.text = `GEOSPLAT v${version}\n${settingsStatus}`;
         };
 
         // cursor label
