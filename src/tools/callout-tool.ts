@@ -1,5 +1,5 @@
 import { Button, Container, Label } from '@playcanvas/pcui';
-import { BLEND_NONE, BLEND_NORMAL, Color, Entity, Mat4, Quat, StandardMaterial, TranslateGizmo, Vec3 } from 'playcanvas';
+import { BLEND_NONE, BLEND_NORMAL, Color, CULLFACE_NONE, Entity, Mat4, MeshInstance, Quat, StandardMaterial, TranslateGizmo, Vec3, createMesh } from 'playcanvas';
 
 import { Events } from '../events';
 import { Scene } from '../scene';
@@ -17,6 +17,104 @@ const t = new Transform();
 const tmpA = new Vec3();
 const tmpB = new Vec3();
 const tmpC = new Vec3();
+
+const buildThreePointBox = (points: [Vec3, Vec3, Vec3]) => {
+    const [a, b, c] = points;
+    const baseA = new Vec3(a.x, 0, a.z);
+    const baseB = new Vec3(b.x, 0, b.z);
+    const baseC = new Vec3(c.x, 0, c.z);
+    const yValues = [a.y, b.y, c.y];
+    const minY = Math.min(...yValues);
+    const maxY = Math.max(...yValues);
+    const baseD = new Vec3(baseB.x + baseC.x - baseA.x, 0, baseB.z + baseC.z - baseA.z);
+
+    tmpA.sub2(baseB, baseA);
+    tmpB.sub2(baseC, baseA);
+    const areaTwice = tmpA.x * tmpB.z - tmpA.z * tmpB.x;
+    if (Math.abs(areaTwice) <= 1e-8) {
+        return null;
+    }
+
+    const bottom = [
+        new Vec3(baseA.x, minY, baseA.z),
+        new Vec3(baseB.x, minY, baseB.z),
+        new Vec3(baseD.x, minY, baseD.z),
+        new Vec3(baseC.x, minY, baseC.z)
+    ];
+    const top = [
+        new Vec3(baseA.x, maxY, baseA.z),
+        new Vec3(baseB.x, maxY, baseB.z),
+        new Vec3(baseD.x, maxY, baseD.z),
+        new Vec3(baseC.x, maxY, baseC.z)
+    ];
+
+    const center = new Vec3().add2(bottom[0], bottom[2]).mulScalar(0.5);
+    center.y = (minY + maxY) * 0.5;
+
+    return {
+        bottom,
+        top,
+        center,
+        scale: null as Vec3 | null,
+        rotationTarget: null as Vec3 | null
+    };
+};
+
+const appendQuad = (
+    positions: number[],
+    normals: number[],
+    indices: number[],
+    p0: Vec3,
+    p1: Vec3,
+    p2: Vec3,
+    p3: Vec3
+) => {
+    const baseIndex = positions.length / 3;
+    const edge0 = new Vec3().sub2(p1, p0);
+    const edge1 = new Vec3().sub2(p2, p0);
+    const normal = new Vec3().cross(edge0, edge1).normalize();
+    [p0, p1, p2, p3].forEach((point) => {
+        positions.push(point.x, point.y, point.z);
+        normals.push(normal.x, normal.y, normal.z);
+    });
+    indices.push(
+        baseIndex, baseIndex + 1, baseIndex + 2,
+        baseIndex, baseIndex + 2, baseIndex + 3
+    );
+};
+
+const createPrismFillEntity = (
+    graphicsDevice: Scene['app']['graphicsDevice'],
+    worldLayerId: number,
+    box: NonNullable<ReturnType<typeof buildThreePointBox>>,
+    material: StandardMaterial
+) => {
+    const positions: number[] = [];
+    const normals: number[] = [];
+    const indices: number[] = [];
+
+    appendQuad(positions, normals, indices, box.bottom[0], box.bottom[3], box.bottom[2], box.bottom[1]);
+    appendQuad(positions, normals, indices, box.top[0], box.top[1], box.top[2], box.top[3]);
+
+    for (let i = 0; i < box.bottom.length; i++) {
+        const next = (i + 1) % box.bottom.length;
+        appendQuad(positions, normals, indices, box.bottom[i], box.bottom[next], box.top[next], box.top[i]);
+    }
+
+    const mesh = createMesh(graphicsDevice, positions, {
+        normals,
+        indices
+    });
+
+    const entity = new Entity('annotationPreviewPrismFill');
+    const meshInstance = new MeshInstance(mesh, material);
+    meshInstance.cull = false;
+    entity.addComponent('render', {
+        meshInstances: [meshInstance],
+        layers: [worldLayerId]
+    });
+    return entity;
+};
 
 type AnnotationData = {
     position: [number, number, number],
@@ -157,6 +255,7 @@ class CalloutTool {
         let snapDraggedPoint = false;
         let zoomAfterNavigation = false;
         let draggingHandle = false;
+        let annotationPreviewPrismFill: Entity | null = null;
 
         const createPrimitiveMaterial = (rgba: [number, number, number, number]) => {
             const color = new Color(rgba[0], rgba[1], rgba[2], rgba[3]);
@@ -173,7 +272,37 @@ class CalloutTool {
             return material;
         };
 
+        const createFillMaterial = (rgba: [number, number, number, number]) => {
+            const color = new Color(rgba[0], rgba[1], rgba[2], rgba[3]);
+            const material = new StandardMaterial();
+            material.diffuse.set(color.r, color.g, color.b);
+            material.emissive.set(color.r, color.g, color.b);
+            material.useLighting = false;
+            material.cull = CULLFACE_NONE;
+            material.opacity = color.a;
+            if (color.a < 1) {
+                material.blendType = BLEND_NORMAL;
+                material.depthWrite = false;
+            }
+            material.update();
+            return material;
+        };
+
         const setMaterialRgba = (material: StandardMaterial, rgba: [number, number, number, number]) => {
+            material.diffuse.set(rgba[0], rgba[1], rgba[2]);
+            material.emissive.set(rgba[0], rgba[1], rgba[2]);
+            material.opacity = rgba[3];
+            if (rgba[3] < 1) {
+                material.blendType = BLEND_NORMAL;
+                material.depthWrite = false;
+            } else {
+                material.blendType = BLEND_NONE;
+                material.depthWrite = true;
+            }
+            material.update();
+        };
+
+        const setFillMaterialRgba = (material: StandardMaterial, rgba: [number, number, number, number]) => {
             material.diffuse.set(rgba[0], rgba[1], rgba[2]);
             material.emissive.set(rgba[0], rgba[1], rgba[2]);
             material.opacity = rgba[3];
@@ -246,7 +375,7 @@ class CalloutTool {
         };
 
         const edgeMaterial = createPrimitiveMaterial([1, 0.4, 0, 1]);
-        const fillMaterial = createPrimitiveMaterial([1, 0.4, 0, 0.15]);
+        const fillMaterial = createFillMaterial([1, 0.4, 0, 0.15]);
         for (let i = 0; i < 12; i++) {
             const segmentEntity = new Entity(`annotationPreviewSegment${i}`);
             segmentEntity.addComponent('render', {
@@ -531,6 +660,9 @@ class CalloutTool {
             annotationPreviewDecoratorStart.enabled = false;
             annotationPreviewDecoratorEnd.enabled = false;
             annotationPreviewFill.enabled = false;
+            if (annotationPreviewPrismFill) {
+                annotationPreviewPrismFill.enabled = false;
+            }
             annotationMeasurementLabels.forEach((label) => {
                 label.style.display = 'none';
             });
@@ -590,13 +722,16 @@ class CalloutTool {
             const showMeasurement = annotation.showMeasurement === true;
             const measurementUnit = annotation.measurementUnits ?? 'm';
             setMaterialRgba(lineMaterial, lineColor);
-            setMaterialRgba(fillMaterial, boxColor);
+            setFillMaterialRgba(fillMaterial, boxColor);
 
             const worldPoints = annotation.points.map(point => new Vec3(point[0], point[1], point[2]));
             const anchor = new Vec3(annotation.position[0], annotation.position[1], annotation.position[2]);
             const thickness = computeThicknessWorld(anchor, lineThickness);
 
             if (worldPoints.length === 2) {
+                if (annotationPreviewPrismFill) {
+                    annotationPreviewPrismFill.enabled = false;
+                }
                 annotationPreviewSegments[0].enabled = true;
                 configureSegmentTransform(annotationPreviewSegments[0], worldPoints[0], worldPoints[1], thickness);
 
@@ -632,47 +767,35 @@ class CalloutTool {
                 return;
             }
 
-            const [a, b, c] = worldPoints;
-            const minX = Math.min(a.x, b.x, c.x);
-            const maxX = Math.max(a.x, b.x, c.x);
-            const minY = Math.min(a.y, b.y, c.y);
-            const maxY = Math.max(a.y, b.y, c.y);
-            const minZ = Math.min(a.z, b.z, c.z);
-            const maxZ = Math.max(a.z, b.z, c.z);
-            const corners = [
-                new Vec3(minX, minY, minZ),
-                new Vec3(maxX, minY, minZ),
-                new Vec3(maxX, minY, maxZ),
-                new Vec3(minX, minY, maxZ),
-                new Vec3(minX, maxY, minZ),
-                new Vec3(maxX, maxY, minZ),
-                new Vec3(maxX, maxY, maxZ),
-                new Vec3(minX, maxY, maxZ)
-            ];
-            const edges: [number, number][] = [
-                [0, 1], [1, 2], [2, 3], [3, 0],
-                [4, 5], [5, 6], [6, 7], [7, 4],
-                [0, 4], [1, 5], [2, 6], [3, 7]
-            ];
+            const box = buildThreePointBox(worldPoints as [Vec3, Vec3, Vec3]);
+            if (!box) {
+                return;
+            }
+            const edges: [Vec3, Vec3][] = [];
+            for (let i = 0; i < box.bottom.length; i++) {
+                const next = (i + 1) % box.bottom.length;
+                edges.push([box.bottom[i], box.bottom[next]]);
+                edges.push([box.top[i], box.top[next]]);
+                edges.push([box.bottom[i], box.top[i]]);
+            }
 
-            edges.forEach(([i0, i1], idx) => {
+            edges.forEach(([start, end], idx) => {
                 annotationPreviewSegments[idx].enabled = true;
-                configureSegmentTransform(annotationPreviewSegments[idx], corners[i0], corners[i1], thickness);
+                configureSegmentTransform(annotationPreviewSegments[idx], start, end, thickness);
             });
 
-            annotationPreviewFill.enabled = true;
-            annotationPreviewFill.setPosition((minX + maxX) * 0.5, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5);
-            annotationPreviewFill.setLocalScale(
-                Math.max(1e-4, maxX - minX),
-                Math.max(1e-4, maxY - minY),
-                Math.max(1e-4, maxZ - minZ)
-            );
+            annotationPreviewFill.enabled = false;
+            if (annotationPreviewPrismFill) {
+                annotationPreviewPrismFill.destroy();
+            }
+            annotationPreviewPrismFill = createPrismFillEntity(scene.app.graphicsDevice, scene.worldLayer.id, box, fillMaterial);
+            annotationPreviewRoot.addChild(annotationPreviewPrismFill);
 
             if (showMeasurement) {
                 const labelPairs: [Vec3, Vec3][] = [
-                    [corners[0], corners[1]],
-                    [corners[0], corners[3]],
-                    [corners[0], corners[4]]
+                    [box.bottom[0], box.bottom[1]],
+                    [box.bottom[0], box.bottom[3]],
+                    [box.bottom[0], box.top[0]]
                 ];
                 labelPairs.forEach(([start, end], idx) => {
                     tmpA.add2(start, end).mulScalar(0.5);
