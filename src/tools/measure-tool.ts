@@ -56,9 +56,24 @@ class MeasureTool {
         lineTop.id = 'measure-line-top';
         lineTop.setAttribute('href', '#measure-line');
 
+        const line2 = document.createElementNS(ns, 'line') as SVGLineElement;
+        line2.id = 'measure-line-2';
+        defs.appendChild(line2);
+
+        const line2Bottom = document.createElementNS(ns, 'use') as SVGUseElement;
+        line2Bottom.id = 'measure-line-2-bottom';
+        line2Bottom.setAttribute('href', '#measure-line-2');
+
+        const line2Top = document.createElementNS(ns, 'use') as SVGUseElement;
+        line2Top.id = 'measure-line-2-top';
+        line2Top.setAttribute('href', '#measure-line-2');
+
         // create line ends
         const lineStart = document.createElementNS(ns, 'circle') as SVGCircleElement;
         lineStart.id = 'measure-line-start';
+
+        const lineMid = document.createElementNS(ns, 'circle') as SVGCircleElement;
+        lineMid.id = 'measure-line-mid';
 
         const lineEnd = document.createElementNS(ns, 'circle') as SVGCircleElement;
         lineEnd.id = 'measure-line-end';
@@ -66,7 +81,10 @@ class MeasureTool {
         svg.appendChild(defs);
         svg.appendChild(lineBottom);
         svg.appendChild(lineTop);
+        svg.appendChild(line2Bottom);
+        svg.appendChild(line2Top);
         svg.appendChild(lineStart);
+        svg.appendChild(lineMid);
         svg.appendChild(lineEnd);
 
         // ui
@@ -341,10 +359,15 @@ class MeasureTool {
                 gizmo.attach(entity);
             }
 
-            if (splat && splat.measurePoints.length === 2) {
+            if (splat && splat.measurePoints.length >= 2) {
                 getPoint(0, p0);
                 getPoint(1, p1);
-                const lenMeters = p0.distance(p1) * getMeasureScale();
+                let lenMeters = p0.distance(p1);
+                if (splat.measurePoints.length >= 3) {
+                    getPoint(2, p2);
+                    lenMeters += p1.distance(p2);
+                }
+                lenMeters *= getMeasureScale();
                 const unit = getCurrentUnit();
                 const len = units[unit].toDisplay(lenMeters);
 
@@ -455,7 +478,7 @@ class MeasureTool {
         let startLen = 0;
 
         const startScale = () => {
-            if (!splat || splat.measurePoints.length !== 2) {
+            if (!splat || splat.measurePoints.length < 2) {
                 return;
             }
 
@@ -466,14 +489,20 @@ class MeasureTool {
 
             getPoint(0, p0);
             getPoint(1, p1);
-            mid.sub2(p1, p0);
-            startLen = mid.length();
-            mid.mulScalar(0.5).add(p0);
+            if (splat.measurePoints.length >= 3) {
+                getPoint(2, p2);
+                startLen = p0.distance(p1) + p1.distance(p2);
+                mid.add2(p0, p2).mulScalar(0.5);
+            } else {
+                mid.sub2(p1, p0);
+                startLen = mid.length();
+                mid.mulScalar(0.5).add(p0);
+            }
         };
 
         // position and scale the splat according to the new length
         const applyLength = (newLength: number) => {
-            if (!splat || splat.measurePoints.length !== 2 || newLength <= 0) {
+            if (!splat || splat.measurePoints.length < 2 || newLength <= 0) {
                 return;
             }
 
@@ -595,7 +624,7 @@ class MeasureTool {
                     return;
                 }
 
-                if (splat.measurePoints.length < 2) {
+                if (splat.measurePoints.length < 3) {
                     const result = await scene.camera.intersect(e.offsetX / canvasContainer.dom.clientWidth, e.offsetY / canvasContainer.dom.clientHeight);
                     if (result) {
                         mat.invert(splat.worldTransform);
@@ -633,8 +662,9 @@ class MeasureTool {
         events.on('postrender', () => {
             if (active && splat) {
                 line.setAttribute('visibility', splat.measurePoints.length > 1 ? 'visible' : 'hidden');
+                line2.setAttribute('visibility', splat.measurePoints.length > 2 ? 'visible' : 'hidden');
 
-                for (let i = 0; i < 2; i++) {
+                for (let i = 0; i < 3; i++) {
                     if (i < splat.measurePoints.length) {
                         getPoint2d(i, p);
 
@@ -651,6 +681,14 @@ class MeasureTool {
                         } else if (i === 1) {
                             line.setAttribute('x2', x);
                             line.setAttribute('y2', y);
+                            line2.setAttribute('x1', x);
+                            line2.setAttribute('y1', y);
+                            lineMid.setAttribute('cx', x);
+                            lineMid.setAttribute('cy', y);
+                            lineMid.setAttribute('visibility', 'visible');
+                        } else if (i === 2) {
+                            line2.setAttribute('x2', x);
+                            line2.setAttribute('y2', y);
                             lineEnd.setAttribute('cx', x);
                             lineEnd.setAttribute('cy', y);
                             lineEnd.setAttribute('visibility', 'visible');
@@ -658,6 +696,8 @@ class MeasureTool {
                     } else {
                         if (i === 0) {
                             lineStart.setAttribute('visibility', 'hidden');
+                        } else if (i === 1) {
+                            lineMid.setAttribute('visibility', 'hidden');
                         } else {
                             lineEnd.setAttribute('visibility', 'hidden');
                         }
@@ -665,7 +705,9 @@ class MeasureTool {
                 }
             } else {
                 line.setAttribute('visibility', 'hidden');
+                line2.setAttribute('visibility', 'hidden');
                 lineStart.setAttribute('visibility', 'hidden');
+                lineMid.setAttribute('visibility', 'hidden');
                 lineEnd.setAttribute('visibility', 'hidden');
             }
         });
