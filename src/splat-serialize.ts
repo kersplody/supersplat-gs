@@ -1363,7 +1363,7 @@ const mergeExperienceSettings = (baseSettings: Record<string, any> | undefined, 
     merged.postEffectSettings = merged.postEffectSettings ?? structuredClone(defaultPostEffectSettings);
     merged.animTracks = nextSettings.animTracks;
     merged.cameras = nextSettings.cameras;
-    merged.annotations = merged.annotations ?? [];
+    merged.annotations = nextSettings.annotations;
     merged.startMode = nextSettings.startMode;
 
     return merged;

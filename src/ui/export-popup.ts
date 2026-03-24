@@ -558,7 +558,7 @@ class ExportPopup extends Container {
                     postEffectSettings: defaultPostEffectSettings,
                     animTracks,
                     cameras,
-                    annotations: [],
+                    annotations: events.invoke('annotations.export') as ExperienceSettings['annotations'],
                     startMode: includeAnimation ? 'animTrack' : 'default'
                 };
 

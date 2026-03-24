@@ -133,6 +133,16 @@ class ScenePanel extends Container {
             class: 'panel-header-label'
         });
 
+        const updateCalloutLabel = (draft?: { kind?: 'point' | 'line' | 'box', points?: [number, number, number][] } | null) => {
+            let kind = draft?.kind;
+            if (!kind && draft?.points?.length) {
+                kind = draft.points.length === 1 ? 'point' : (draft.points.length === 2 ? 'line' : 'box');
+            }
+            calloutLabel.text = kind ?
+                `${localize('panel.scene-manager.callout')}: ${kind.toUpperCase()}` :
+                localize('panel.scene-manager.callout');
+        };
+
         calloutHeader.append(calloutIcon);
         calloutHeader.append(calloutLabel);
 
@@ -142,8 +152,13 @@ class ScenePanel extends Container {
         calloutSection.append(calloutHeader);
         calloutSection.append(calloutPanel);
 
+        const transformSection = new Container();
+        transformSection.append(transformHeader);
+        transformSection.append(new Transform(events));
+
         this.append(transformHeader);
-        this.append(new Transform(events));
+        this.remove(transformHeader);
+        this.append(transformSection);
         this.append(calloutSection);
         this.append(new Element({
             class: 'panel-header',
@@ -152,13 +167,21 @@ class ScenePanel extends Container {
 
         events.on('tool.activated', (toolName: string) => {
             calloutSection.hidden = toolName !== 'annotation';
+            transformSection.hidden = toolName === 'annotation';
         });
 
         events.on('tool.deactivated', () => {
             if (events.invoke('tool.active') !== 'annotation') {
                 calloutSection.hidden = true;
+                transformSection.hidden = false;
             }
         });
+
+        events.on('annotation.draftChanged', (draft) => {
+            updateCalloutLabel(draft);
+        });
+
+        updateCalloutLabel(events.invoke('annotation.draft') as { kind?: 'point' | 'line' | 'box', points?: [number, number, number][] } | null);
     }
 }
 

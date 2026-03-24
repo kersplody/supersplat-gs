@@ -25,7 +25,6 @@ import { Tooltips } from './tooltips';
 import { VideoSettingsDialog } from './video-settings-dialog';
 import { ViewCube } from './view-cube';
 import { ViewPanel } from './view-panel';
-import { Splat } from '../splat';
 import { version } from '../../package.json';
 
 // ts compiler and vscode find this type, but eslint does not
@@ -81,94 +80,6 @@ class EditorUI {
         });
         const defaultAppLabel = `GEOSPLAT v${version}`;
         let activeMeasurePoint: { x: number, y: number, z: number } | null = null;
-        const toArray = (value: { x: number, y: number, z: number }, digits = 4) => [
-            Number(value.x.toFixed(digits)),
-            Number(value.y.toFixed(digits)),
-            Number(value.z.toFixed(digits))
-        ];
-        const darkBubbleColor = [0.08, 0.08, 0.08, 0.9];
-        const whiteTextColor = [1, 1, 1, 1];
-        const orangeLineColor = [1, 0.4, 0, 1];
-        const orangeBoxColor = [1, 0.4, 0, 0.15];
-        const midpoint = (a: Vec3, b: Vec3) => new Vec3().add2(a, b).mulScalar(0.5);
-        const centroid = (points: Vec3[]) => {
-            const result = new Vec3();
-            points.forEach((point) => result.add(point));
-            return result.mulScalar(1 / points.length);
-        };
-        const getMeasurePoints = () => {
-            const splat = events.invoke('selection') as Splat | null;
-            if (!splat) {
-                return [];
-            }
-
-            const activeTool = events.invoke('tool.active');
-            const points = activeTool === 'annotation' ? splat.annotationPoints : splat.measurePoints;
-
-            return points.map((point) => {
-                const worldPoint = new Vec3();
-                splat.worldTransform.transformPoint(point, worldPoint);
-                return worldPoint;
-            });
-        };
-        const copyCalloutData = async () => {
-            const pose = events.invoke('camera.getPose') as
-                | { position: { x: number, y: number, z: number }, target: { x: number, y: number, z: number }, fov: number }
-                | undefined;
-            if (!pose) {
-                return;
-            }
-
-            const measurePoints = getMeasurePoints();
-            const camera = {
-                camera: {
-                    initial: {
-                        position: toArray(pose.position),
-                        target: toArray(pose.target),
-                        fov: Number(pose.fov.toFixed(2))
-                    }
-                }
-            };
-            const activeTool = events.invoke('tool.active');
-            const draft = events.invoke('annotation.draft') as Record<string, any> | undefined;
-            let payload: Record<string, any> = activeTool === 'annotation' ? {
-                ...camera,
-                ...draft,
-                extras: draft?.extras ?? {}
-            } : {
-                ...camera,
-                position: activeMeasurePoint ? toArray(activeMeasurePoint) : null,
-                title: '',
-                text: '',
-                textColor: whiteTextColor,
-                msgBoxColor: darkBubbleColor,
-                extras: {}
-            };
-
-            if (measurePoints.length === 1) {
-                payload = {
-                    ...payload,
-                    kind: 'point',
-                    position: toArray(measurePoints[0])
-                };
-            } else if (measurePoints.length === 2) {
-                payload = {
-                    ...payload,
-                    kind: 'line',
-                    position: toArray(midpoint(measurePoints[0], measurePoints[1])),
-                    points: [toArray(measurePoints[0]), toArray(measurePoints[1])]
-                };
-            } else if (measurePoints.length >= 3) {
-                payload = {
-                    ...payload,
-                    kind: 'box',
-                    position: toArray(centroid(measurePoints.slice(0, 3))),
-                    points: [toArray(measurePoints[0]), toArray(measurePoints[1]), toArray(measurePoints[2])]
-                };
-            }
-
-            await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
-        };
         const renderMeasurementLabel = () => {
             const activeTool = events.invoke('tool.active');
             const measureMode = activeTool === 'measure';
@@ -220,10 +131,6 @@ class EditorUI {
             setTimeout(() => {
                 cursorLabel.text = orig;
             }, 1000);
-        });
-
-        events.on('annotation.copy', async () => {
-            await copyCalloutData();
         });
 
         // canvas container

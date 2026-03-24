@@ -6,7 +6,7 @@ import { Events } from './events';
 import { BrowserFileSystem, MappedReadFileSystem } from './io';
 import { Scene } from './scene';
 import { Splat } from './splat';
-import { serializePly, serializePlyCompressed, SerializeSettings, serializeSog, serializeSplat, serializeViewer, serializeViewerConfig, SogSettings, ViewerExportSettings, ExperienceSettings, CriticalSettingsExtensions } from './splat-serialize';
+import { serializePly, serializePlyCompressed, SerializeSettings, serializeSog, serializeSplat, serializeViewer, serializeViewerConfig, SogSettings, ViewerExportSettings, ExperienceSettings, CriticalSettingsExtensions, defaultPostEffectSettings, mergeExperienceSettings } from './splat-serialize';
 import { localize } from './ui/localization';
 
 // ts compiler and vscode find this type, but eslint does not
@@ -138,6 +138,10 @@ const isPlySequence = (filenames: string[]) => {
     return true;
 };
 
+const removeExtension = (filename: string) => {
+    return filename.substring(0, filename.length - path.getExtension(filename).length);
+};
+
 // sog comprises a single meta.json file and zero or more .webp files
 const isSog = (filenames: string[]) => {
     const count = (extension: string) => filenames.reduce((sum, f) => sum + (f.endsWith(extension) ? 1 : 0), 0);
@@ -223,6 +227,7 @@ const loadViewerSettings = async (file: ImportFile, events: Events) => {
         sceneRotation: manualSettings.sceneRotation,
         hasFramePreviews: manualSettings.hasFramePreviews
     });
+    events.fire('annotations.load', settings.annotations ?? []);
 
     const cameraPose = manualSettings.camera ? {
         fov: manualSettings.camera.fov,
@@ -318,10 +323,6 @@ const loadViewerSettings = async (file: ImportFile, events: Events) => {
         setCameraPose(cameraPose?.position, cameraPose?.target);
     }
 
-};
-
-const removeExtension = (filename: string) => {
-    return filename.substring(0, filename.length - path.getExtension(filename).length);
 };
 
 // https://colmap.github.io/format.html#images-txt
@@ -617,6 +618,65 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
 
         const hasFilePicker = !!window.showSaveFilePicker;
 
+        if (exportType === 'config') {
+            const bgClr = events.invoke('bgClr') as Color;
+            const pose = events.invoke('camera.getPose') as
+                | { position: { x: number, y: number, z: number }, target: { x: number, y: number, z: number }, fov: number }
+                | undefined;
+            const rawSettings = events.invoke('settings.raw') as Record<string, any> | undefined;
+            const experienceSettings = mergeExperienceSettings(rawSettings, {
+                version: 2,
+                tonemapping: 'none',
+                highPrecisionRendering: false,
+                background: {
+                    color: bgClr ? [bgClr.r, bgClr.g, bgClr.b] : [0.4, 0.4, 0.4]
+                },
+                postEffectSettings: defaultPostEffectSettings,
+                animTracks: rawSettings?.animTracks ?? [],
+                cameras: rawSettings?.cameras ?? (pose ? [{
+                    initial: {
+                        position: [pose.position.x, pose.position.y, pose.position.z] as [number, number, number],
+                        target: [pose.target.x, pose.target.y, pose.target.z] as [number, number, number],
+                        fov: pose.fov
+                    }
+                }] : []),
+                annotations: events.invoke('annotations.export') as ExperienceSettings['annotations'],
+                startMode: rawSettings?.startMode ?? 'default'
+            });
+            Object.assign(experienceSettings as ExperienceSettings & CriticalSettingsExtensions, events.invoke('settings.extensions'), {
+                scene_meas_scale: events.invoke('view.measureScale')
+            } satisfies CriticalSettingsExtensions);
+
+            const filename = rawSettings ? 'settings.json' : `${removeExtension(splats[0]?.name ?? 'settings')}.json`;
+            const options: SceneExportOptions = {
+                filename,
+                splatIdx: 'all',
+                serializeSettings: {},
+                viewerExportSettings: {
+                    type: 'html',
+                    experienceSettings
+                }
+            };
+
+            if (hasFilePicker) {
+                try {
+                    const fileHandle = await window.showSaveFilePicker({
+                        id: 'SuperSplatFileExport',
+                        types: [filePickerTypes.viewerConfig],
+                        suggestedName: options.filename
+                    });
+                    await events.invoke('scene.write', 'viewerConfig', options, await fileHandle.createWritable());
+                } catch (error) {
+                    if (error.name !== 'AbortError') {
+                        console.error(error);
+                    }
+                }
+            } else {
+                await events.invoke('scene.write', 'viewerConfig', options);
+            }
+            return;
+        }
+
         // show viewer export options
         const options = await events.invoke('show.exportPopup', exportType, splats.map(s => s.name), !hasFilePicker) as SceneExportOptions;
 
@@ -627,9 +687,8 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
 
         const fileType: FileType =
             (exportType === 'viewer') ? (options.viewerExportSettings!.type === 'zip' ? 'packageViewer' : 'htmlViewer') :
-                (exportType === 'config') ? 'viewerConfig' :
-                    (exportType === 'ply') ? (options.compressedPly ? 'compressedPly' : 'ply') :
-                        (exportType === 'sog') ? 'sog' : 'splat';
+                (exportType === 'ply') ? (options.compressedPly ? 'compressedPly' : 'ply') :
+                    (exportType === 'sog') ? 'sog' : 'splat';
 
         if (hasFilePicker) {
             try {

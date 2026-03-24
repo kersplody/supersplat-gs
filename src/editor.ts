@@ -25,7 +25,17 @@ type AnnotationDraft = {
     lineThickness: number,
     boxColor: [number, number, number, number],
     showMeasurement: boolean,
-    measurementUnits: 'm' | 'ft' | 'in' | 'cm'
+    measurementUnits: 'm' | 'ft' | 'in' | 'cm',
+    extras?: any,
+    camera?: {
+        initial: {
+            position: [number, number, number],
+            target: [number, number, number],
+            fov: number
+        }
+    },
+    kind?: 'point' | 'line' | 'box',
+    points?: [number, number, number][]
 };
 
 const defaultAnnotationDraft = (): AnnotationDraft => ({
@@ -39,7 +49,8 @@ const defaultAnnotationDraft = (): AnnotationDraft => ({
     lineThickness: 2,
     boxColor: [1, 0.4, 0, 0.15],
     showMeasurement: true,
-    measurementUnits: 'm'
+    measurementUnits: 'm',
+    extras: {}
 });
 
 // register for editor and scene events
@@ -62,7 +73,8 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
 
     let lastExportCursor = 0;
     let measureScale = 1;
-    let annotationDraft = defaultAnnotationDraft();
+    let annotations: AnnotationDraft[] = [];
+    let annotationIndex = -1;
     let preservedSettingsRaw: Record<string, any> | undefined;
     let preservedSettingsExtensions: {
         sceneRotation?: { x: number, y: number, z: number },
@@ -91,6 +103,9 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
         lastExportCursor = 0;
         preservedSettingsRaw = undefined;
         preservedSettingsExtensions = {};
+        annotations = [];
+        annotationIndex = -1;
+        emitAnnotationState();
     });
 
     // When a splat is removed from the scene, remove all edit operations that reference it
@@ -178,21 +193,185 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
         setMeasureScale(value);
     });
 
+    const getCameraSnapshot = () => {
+        const pose = events.invoke('camera.getPose') as
+            | { position: { x: number, y: number, z: number }, target: { x: number, y: number, z: number }, fov: number }
+            | undefined;
+        if (!pose) {
+            return {
+                initial: {
+                    position: [0, 0, 0] as [number, number, number],
+                    target: [0, 0, 0] as [number, number, number],
+                    fov: 60
+                }
+            };
+        }
+        return {
+            initial: {
+                position: [pose.position.x, pose.position.y, pose.position.z] as [number, number, number],
+                target: [pose.target.x, pose.target.y, pose.target.z] as [number, number, number],
+                fov: pose.fov
+            }
+        };
+    };
+
+    const normalizeAnnotation = (value?: Partial<AnnotationDraft>) => {
+        const base = defaultAnnotationDraft();
+        const explicitPoints = Array.isArray(value?.points) ?
+            value.points
+            .filter((point): point is [number, number, number] => Array.isArray(point) && point.length >= 3)
+            .slice(0, 3)
+            .map(point => [Number(point[0]), Number(point[1]), Number(point[2])] as [number, number, number]) :
+            undefined;
+        const points = explicitPoints ?? (value?.kind === 'point' && value.position ? [value.position] : undefined);
+
+        return {
+            ...base,
+            ...value,
+            textColor: value?.textColor ?? base.textColor,
+            msgBoxColor: value?.msgBoxColor ?? base.msgBoxColor,
+            lineColor: value?.lineColor ?? base.lineColor,
+            lineDecorator: value?.lineDecorator ?? base.lineDecorator,
+            lineThickness: value?.lineThickness ?? base.lineThickness,
+            boxColor: value?.boxColor ?? base.boxColor,
+            showMeasurement: value?.showMeasurement ?? base.showMeasurement,
+            measurementUnits: value?.measurementUnits ?? base.measurementUnits,
+            extras: value?.extras ?? {},
+            camera: value?.camera ?? getCameraSnapshot(),
+            position: value?.position ?? base.position,
+            kind: points ? (points.length === 0 ? undefined : (points.length === 1 ? 'point' : (points.length === 2 ? 'line' : 'box'))) : value?.kind,
+            points
+        } satisfies AnnotationDraft;
+    };
+
+    const emitAnnotationState = () => {
+        const current = annotationIndex >= 0 && annotationIndex < annotations.length ?
+            structuredClone(annotations[annotationIndex]) :
+            null;
+        events.fire('annotations.stateChanged', {
+            count: annotations.length,
+            index: annotationIndex,
+            current
+        });
+        events.fire('annotation.draftChanged', current ?? structuredClone(defaultAnnotationDraft()));
+    };
+
+    const ensureCurrentAnnotation = () => {
+        if (annotationIndex >= 0 && annotationIndex < annotations.length) {
+            return annotations[annotationIndex];
+        }
+        const annotation = normalizeAnnotation();
+        annotations.push(annotation);
+        annotationIndex = annotations.length - 1;
+        return annotation;
+    };
+
     events.function('annotation.draft', () => {
-        return structuredClone(annotationDraft);
+        return structuredClone(annotationIndex >= 0 && annotationIndex < annotations.length ?
+            annotations[annotationIndex] :
+            defaultAnnotationDraft());
+    });
+
+    events.function('annotations.export', () => {
+        return structuredClone(annotations).map((annotation: AnnotationDraft) => {
+            const result = { ...annotation } as AnnotationDraft;
+            if (!result.points || result.points.length === 0) {
+                delete result.kind;
+                delete result.points;
+            } else {
+                result.kind = result.points.length === 1 ? 'point' : (result.points.length === 2 ? 'line' : 'box');
+            }
+            return result;
+        });
+    });
+
+    events.function('annotations.state', () => {
+        return {
+            count: annotations.length,
+            index: annotationIndex,
+            current: structuredClone(annotationIndex >= 0 && annotationIndex < annotations.length ? annotations[annotationIndex] : null)
+        };
+    });
+
+    events.on('annotations.load', (value: Partial<AnnotationDraft>[] = []) => {
+        annotations = (value ?? []).map(item => normalizeAnnotation(item));
+        annotationIndex = annotations.length > 0 ? 0 : -1;
+        emitAnnotationState();
+    });
+
+    events.on('annotation.new', () => {
+        annotations.push(normalizeAnnotation({
+            camera: getCameraSnapshot()
+        }));
+        annotationIndex = annotations.length - 1;
+        emitAnnotationState();
+    });
+
+    events.on('annotation.cloneCurrent', () => {
+        if (annotationIndex < 0 || annotationIndex >= annotations.length) {
+            annotations.push(normalizeAnnotation({
+                camera: getCameraSnapshot()
+            }));
+        } else {
+            annotations.push(normalizeAnnotation(structuredClone(annotations[annotationIndex])));
+        }
+        annotationIndex = annotations.length - 1;
+        emitAnnotationState();
+    });
+
+    events.on('annotation.prev', () => {
+        if (annotations.length === 0) {
+            return;
+        }
+        annotationIndex = Math.max(0, annotationIndex - 1);
+        emitAnnotationState();
+    });
+
+    events.on('annotation.next', () => {
+        if (annotations.length === 0) {
+            return;
+        }
+        annotationIndex = Math.min(annotations.length - 1, annotationIndex + 1);
+        emitAnnotationState();
+    });
+
+    events.on('annotation.deleteCurrent', () => {
+        if (annotationIndex < 0 || annotationIndex >= annotations.length) {
+            return;
+        }
+        annotations.splice(annotationIndex, 1);
+        annotationIndex = annotations.length === 0 ? -1 : Math.min(annotationIndex, annotations.length - 1);
+        emitAnnotationState();
+    });
+
+    events.on('annotation.clearPath', () => {
+        if (annotationIndex < 0 || annotationIndex >= annotations.length) {
+            return;
+        }
+        annotations[annotationIndex] = {
+            ...annotations[annotationIndex],
+            kind: undefined,
+            points: undefined
+        };
+        emitAnnotationState();
     });
 
     events.on('annotation.setDraft', (value: Partial<AnnotationDraft>) => {
-        annotationDraft = {
-            ...annotationDraft,
-            ...value
-        };
-        events.fire('annotation.draftChanged', structuredClone(annotationDraft));
+        const current = ensureCurrentAnnotation();
+        Object.assign(current, normalizeAnnotation({
+            ...current,
+            ...value,
+            points: value.points === undefined ? current.points : value.points
+        }));
+        emitAnnotationState();
     });
 
-    events.on('annotation.resetDraft', () => {
-        annotationDraft = defaultAnnotationDraft();
-        events.fire('annotation.draftChanged', structuredClone(annotationDraft));
+    events.on('annotation.setGeometry', (value: { position?: [number, number, number], points?: [number, number, number][] }) => {
+        const current = ensureCurrentAnnotation();
+        current.position = value.position ?? current.position;
+        current.points = value.points ? value.points.slice(0, 3) as [number, number, number][] : current.points;
+        current.kind = !current.points || current.points.length === 0 ? undefined : (current.points.length === 1 ? 'point' : (current.points.length === 2 ? 'line' : 'box'));
+        emitAnnotationState();
     });
 
     events.function('settings.raw', () => {

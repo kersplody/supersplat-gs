@@ -1,29 +1,46 @@
-import { Button, Container, Label, NumericInput, SelectInput } from '@playcanvas/pcui';
-import { BLEND_NORMAL, Color, Entity, Mat4, Quat, StandardMaterial, TranslateGizmo, Vec3 } from 'playcanvas';
+import { Button, Container, Label } from '@playcanvas/pcui';
+import { BLEND_NONE, BLEND_NORMAL, Color, Entity, Mat4, Quat, StandardMaterial, TranslateGizmo, Vec3 } from 'playcanvas';
 
-import { EntityTransformOp } from '../edit-ops';
 import { Events } from '../events';
 import { Scene } from '../scene';
 import { Splat } from '../splat';
 import { State } from '../splat-state';
 import { Transform } from '../transform';
-import { localize } from '../ui/localization';
 
 const mat = new Mat4();
-const mat1 = new Mat4();
-const mat2 = new Mat4();
-const mat3 = new Mat4();
 const p = new Vec3();
 const p0 = new Vec3();
 const p1 = new Vec3();
 const p2 = new Vec3();
-const r = new Quat();
-const s = new Vec3();
-
+const q = new Quat();
 const t = new Transform();
 const tmpA = new Vec3();
 const tmpB = new Vec3();
 const tmpC = new Vec3();
+
+type AnnotationData = {
+    position: [number, number, number],
+    title: string,
+    text: string,
+    textColor: [number, number, number, number],
+    msgBoxColor: [number, number, number, number],
+    lineColor: [number, number, number, number],
+    lineDecorator: 'none' | 'box' | 'arrowheads',
+    lineThickness: number,
+    boxColor: [number, number, number, number],
+    showMeasurement: boolean,
+    measurementUnits: 'm' | 'ft' | 'in' | 'cm',
+    extras?: any,
+    camera?: {
+        initial: {
+            position: [number, number, number],
+            target: [number, number, number],
+            fov: number
+        }
+    },
+    kind?: 'point' | 'line' | 'box',
+    points?: [number, number, number][]
+};
 
 class MeasureTransformHandler {
     activate() {}
@@ -35,23 +52,15 @@ class CalloutTool {
     deactivate: () => void;
 
     constructor(events: Events, scene: Scene, parent: HTMLElement, canvasContainer: Container) {
-        const idPrefix = 'annotation';
-        const isAnnotationTool = true;
-
-        // create svg
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.classList.add('tool-svg', 'hidden', 'measure-tool-svg');
-        svg.id = `${idPrefix}-tool-svg`;
+        svg.id = 'annotation-tool-svg';
         parent.appendChild(svg);
 
         const ns = svg.namespaceURI;
-
-        // create defs node
         const defs = document.createElementNS(ns, 'defs');
-
-        // create line element
         const line = document.createElementNS(ns, 'line') as SVGLineElement;
-        line.id = `${idPrefix}-line`;
+        line.id = 'annotation-line';
         defs.appendChild(line);
 
         const lineBottom = document.createElementNS(ns, 'use') as SVGUseElement;
@@ -63,7 +72,7 @@ class CalloutTool {
         lineTop.setAttribute('href', `#${line.id}`);
 
         const line2 = document.createElementNS(ns, 'line') as SVGLineElement;
-        line2.id = `${idPrefix}-line-2`;
+        line2.id = 'annotation-line-2';
         defs.appendChild(line2);
 
         const line2Bottom = document.createElementNS(ns, 'use') as SVGUseElement;
@@ -74,7 +83,6 @@ class CalloutTool {
         line2Top.classList.add('measure-line-top');
         line2Top.setAttribute('href', `#${line2.id}`);
 
-        // create line ends
         const lineStart = document.createElementNS(ns, 'circle') as SVGCircleElement;
         lineStart.classList.add('measure-line-point');
 
@@ -87,83 +95,58 @@ class CalloutTool {
         const lineExtra = document.createElementNS(ns, 'circle') as SVGCircleElement;
         lineExtra.classList.add('measure-line-point');
 
-        svg.appendChild(defs);
-        svg.appendChild(lineBottom);
-        svg.appendChild(lineTop);
-        svg.appendChild(line2Bottom);
-        svg.appendChild(line2Top);
-        svg.appendChild(lineStart);
-        svg.appendChild(lineMid);
-        svg.appendChild(lineEnd);
-        svg.appendChild(lineExtra);
+        svg.append(defs, lineBottom, lineTop, line2Bottom, line2Top, lineStart, lineMid, lineEnd, lineExtra);
 
-        // ui
-        const lengthLabel = !isAnnotationTool ? new Label({
-            text: localize('measure.length')
-        }) : null;
-
-        const lengthInput = !isAnnotationTool ? new NumericInput({
-            width: 90,
-            placeholder: 'm',
-            precision: 2,
-            min: 0.0001,
-            value: 0
-        }) : null;
-
-        const lengthUnit = !isAnnotationTool ? new SelectInput({
-            class: 'measure-unit-select',
-            defaultValue: 'm',
-            options: [
-                { v: 'm', t: 'm' },
-                { v: 'cm', t: 'cm' },
-                { v: 'ft', t: 'ft' },
-                { v: 'in', t: 'in' }
-            ]
-        }) : null;
-        const copyButton = isAnnotationTool ? new Button({
-            class: 'select-toolbar-button',
-            text: 'COPY CALLOUT'
-        }) : null;
-        const clearButton = new Button({
-            class: 'select-toolbar-button',
-            text: 'Clear'
-        });
-        let suppressUI = 0;
+        const prevButton = new Button({ class: 'select-toolbar-button', text: '<' });
+        const statusLabel = new Label({ text: 'callout 0/0' });
+        const newButton = new Button({ class: 'select-toolbar-button', text: 'New' });
+        const cloneButton = new Button({ class: 'select-toolbar-button', text: 'Clone' });
+        const deleteButton = new Button({ class: 'select-toolbar-button', text: 'Delete' });
+        const clearButton = new Button({ class: 'select-toolbar-button', text: 'Clear Path' });
+        const exportButton = new Button({ class: 'select-toolbar-button', text: 'Export' });
+        const nextButton = new Button({ class: 'select-toolbar-button', text: '>' });
 
         const selectToolbar = new Container({
             class: 'select-toolbar',
             hidden: true
         });
 
-        selectToolbar.dom.addEventListener('pointerdown', (e) => {
-            e.stopPropagation();
-        });
-
-        if (lengthLabel && lengthInput && lengthUnit) {
-            selectToolbar.append(lengthLabel);
-            selectToolbar.append(lengthInput);
-            selectToolbar.append(lengthUnit);
-        }
-        if (copyButton) {
-            selectToolbar.append(copyButton);
-        }
+        selectToolbar.dom.addEventListener('pointerdown', (e) => e.stopPropagation());
+        selectToolbar.append(prevButton);
+        selectToolbar.append(statusLabel);
+        selectToolbar.append(newButton);
+        selectToolbar.append(cloneButton);
+        selectToolbar.append(deleteButton);
         selectToolbar.append(clearButton);
+        selectToolbar.append(exportButton);
+        selectToolbar.append(nextButton);
         canvasContainer.append(selectToolbar);
 
         const gizmo = new TranslateGizmo(scene.camera.camera, scene.gizmoLayer);
-        const entity = new Entity('measureGizmoPivot');
+        const entity = new Entity('calloutGizmoPivot');
         const transformHandler = new MeasureTransformHandler();
-        const annotationPreviewRoot = isAnnotationTool ? new Entity('annotationPreviewRoot') : null;
+        const annotationPreviewRoot = new Entity('annotationPreviewRoot');
         const annotationPreviewSegments = [] as Entity[];
-        const annotationPreviewDecoratorStart = isAnnotationTool ? new Entity('annotationPreviewDecoratorStart') : null;
-        const annotationPreviewDecoratorEnd = isAnnotationTool ? new Entity('annotationPreviewDecoratorEnd') : null;
-        const annotationPreviewFill = isAnnotationTool ? new Entity('annotationPreviewFill') : null;
-        const annotationMeasurementLabels = isAnnotationTool ?
-            [document.createElement('div'), document.createElement('div'), document.createElement('div')] :
-            [];
+        const annotationPreviewDecoratorStart = new Entity('annotationPreviewDecoratorStart');
+        const annotationPreviewDecoratorEnd = new Entity('annotationPreviewDecoratorEnd');
+        const annotationPreviewFill = new Entity('annotationPreviewFill');
+        const annotationMeasurementLabels = [document.createElement('div'), document.createElement('div'), document.createElement('div')];
+        const annotationTooltip = document.createElement('div');
+        const annotationTooltipTitle = document.createElement('div');
+        const annotationTooltipText = document.createElement('div');
 
         let active = false;
-        let splat: Splat;
+        let splat: Splat | null = null;
+        let annotationSelection = -1;
+        let annotationState: {
+            count: number,
+            index: number,
+            current: AnnotationData | null
+        } = {
+            count: 0,
+            index: -1,
+            current: null
+        };
         const positionsCache = new WeakMap<Splat, Float32Array>();
         const screenSearchRadius = 24;
         const densityRadius = 0.35;
@@ -172,75 +155,8 @@ class CalloutTool {
         const minClusterCount = 2;
         let ctrlPressed = false;
         let snapDraggedPoint = false;
-        let settingAnnotationPosition = false;
-        let updatingAnnotationDraft = false;
-        let annotationDraft: {
-            lineColor?: [number, number, number, number],
-            boxColor?: [number, number, number, number],
-            lineThickness?: number,
-            lineDecorator?: 'none' | 'box' | 'arrowheads',
-            showMeasurement?: boolean,
-            measurementUnits?: 'm' | 'ft' | 'in' | 'cm'
-        } | undefined;
-
-        const getActivePoints = () => {
-            if (!splat) {
-                return [] as Vec3[];
-            }
-            return isAnnotationTool ? splat.annotationPoints : splat.measurePoints;
-        };
-
-        const getSelection = () => {
-            if (!splat) {
-                return -1;
-            }
-            return isAnnotationTool ? splat.annotationSelection : splat.measureSelection;
-        };
-
-        const setSelection = (value: number) => {
-            if (!splat) {
-                return;
-            }
-            if (isAnnotationTool) {
-                splat.annotationSelection = value;
-            } else {
-                splat.measureSelection = value;
-            }
-        };
-
-        const getPointCount = () => {
-            if (!splat) {
-                return 0;
-            }
-            return isAnnotationTool ? (splat.annotationLabelPosition ? 1 : 0) + splat.annotationPoints.length : splat.measurePoints.length;
-        };
-
-        const getAnnotationHandleLocal = (index: number) => {
-            if (!splat) {
-                return null;
-            }
-            if (index === 0) {
-                return splat.annotationLabelPosition;
-            }
-            return splat.annotationPoints[index - 1] ?? null;
-        };
-
-        const setAnnotationHandleLocal = (index: number, value: Vec3) => {
-            if (!splat) {
-                return;
-            }
-            if (index === 0) {
-                splat.annotationLabelPosition = value.clone();
-                splat.worldTransform.transformPoint(value, p);
-                updatingAnnotationDraft = true;
-                events.fire('annotation.setDraft', {
-                    position: [p.x, p.y, p.z]
-                });
-                updatingAnnotationDraft = false;
-            } else {
-                splat.annotationPoints[index - 1] = value.clone();
-            }
-        };
+        let zoomAfterNavigation = false;
+        let draggingHandle = false;
 
         const createPrimitiveMaterial = (rgba: [number, number, number, number]) => {
             const color = new Color(rgba[0], rgba[1], rgba[2], rgba[3]);
@@ -254,14 +170,7 @@ class CalloutTool {
                 material.depthWrite = false;
             }
             material.update();
-            material.setParameter('material_opacity', color.a);
             return material;
-        };
-
-        const syncRenderOpacity = (renderEntity: Entity, opacity: number) => {
-            renderEntity.render?.meshInstances?.forEach((meshInstance) => {
-                meshInstance.setParameter('material_opacity', opacity);
-            });
         };
 
         const setMaterialRgba = (material: StandardMaterial, rgba: [number, number, number, number]) => {
@@ -272,10 +181,10 @@ class CalloutTool {
                 material.blendType = BLEND_NORMAL;
                 material.depthWrite = false;
             } else {
+                material.blendType = BLEND_NONE;
                 material.depthWrite = true;
             }
             material.update();
-            material.setParameter('material_opacity', rgba[3]);
         };
 
         const configureSegmentTransform = (segmentEntity: Entity, start: Vec3, end: Vec3, thickness: number) => {
@@ -311,8 +220,7 @@ class CalloutTool {
 
         const computeThicknessWorld = (anchor: Vec3, lineThickness: number) => {
             const camera = scene.camera.camera;
-            const viewMatrix = camera.viewMatrix;
-            viewMatrix.transformPoint(anchor, tmpA);
+            camera.viewMatrix.transformPoint(anchor, tmpA);
             const depth = Math.max(0.1, -tmpA.z);
             const { width, height } = scene.app.graphicsDevice.clientRect;
             const fovRad = camera.fov * Math.PI / 180;
@@ -321,100 +229,100 @@ class CalloutTool {
             return Math.max(0.001, lineThickness * worldPerPixel);
         };
 
-        const getMeasureScale = () => {
-            const value = events.invoke('view.measureScale');
-            return Number.isFinite(value) && value > 0 ? value : 1;
-        };
-
-        if (isAnnotationTool && annotationPreviewRoot) {
-            const edgeMaterial = createPrimitiveMaterial(annotationDraft?.lineColor ?? [1, 0.4, 0, 1]);
-            const fillMaterial = createPrimitiveMaterial(annotationDraft?.boxColor ?? [1, 0.4, 0, 0.15]);
-
-            for (let i = 0; i < 12; i++) {
-                const segmentEntity = new Entity(`annotationPreviewSegment${i}`);
-                segmentEntity.addComponent('render', {
-                    type: 'box',
-                    material: edgeMaterial
-                });
-                annotationPreviewRoot.addChild(segmentEntity);
-                annotationPreviewSegments.push(segmentEntity);
-            }
-
-            annotationPreviewDecoratorStart.addComponent('render', {
-                type: 'box',
-                material: edgeMaterial
-            });
-            annotationPreviewDecoratorEnd.addComponent('render', {
-                type: 'box',
-                material: edgeMaterial
-            });
-            annotationPreviewFill.addComponent('render', {
-                type: 'box',
-                material: fillMaterial
-            });
-
-            annotationPreviewRoot.addChild(annotationPreviewDecoratorStart);
-            annotationPreviewRoot.addChild(annotationPreviewDecoratorEnd);
-            annotationPreviewRoot.addChild(annotationPreviewFill);
-            annotationPreviewRoot.enabled = false;
-            scene.contentRoot.addChild(annotationPreviewRoot);
-            annotationMeasurementLabels.forEach((label) => {
-                label.className = 'annotation-preview-measure';
-                label.style.display = 'none';
-                canvasContainer.dom.appendChild(label);
-            });
-        }
-
         const formatLength = (value: number) => {
             return value >= 100 ? value.toFixed(1) : value.toFixed(2);
         };
 
         const units = {
-            m: {
-                toDisplay: (meters: number) => meters,
-                toMeters: (value: number) => value,
-                suffix: 'm',
-                convertedLabel: (meters: number) => `${formatLength(meters * 3.280839895)} ft`
-            },
-            cm: {
-                toDisplay: (meters: number) => meters * 100,
-                toMeters: (value: number) => value / 100,
-                suffix: 'cm',
-                convertedLabel: (meters: number) => `${formatLength(meters)} m`
-            },
-            ft: {
-                toDisplay: (meters: number) => meters * 3.280839895,
-                toMeters: (value: number) => value / 3.280839895,
-                suffix: 'ft',
-                convertedLabel: (meters: number) => `${formatLength(meters)} m`
-            },
-            in: {
-                toDisplay: (meters: number) => meters * 39.37007874,
-                toMeters: (value: number) => value / 39.37007874,
-                suffix: 'in',
-                convertedLabel: (meters: number) => `${formatLength(meters)} m`
-            }
+            m: { toDisplay: (meters: number) => meters, suffix: 'm' },
+            cm: { toDisplay: (meters: number) => meters * 100, suffix: 'cm' },
+            ft: { toDisplay: (meters: number) => meters * 3.280839895, suffix: 'ft' },
+            in: { toDisplay: (meters: number) => meters * 39.37007874, suffix: 'in' }
         } as const;
 
-        const getCurrentUnit = () => {
-            if (!lengthUnit) {
-                return 'm';
-            }
-            return units[lengthUnit.value as keyof typeof units] ? lengthUnit.value as keyof typeof units : 'm';
+        const getMeasureScale = () => {
+            const value = events.invoke('view.measureScale');
+            return Number.isFinite(value) && value > 0 ? value : 1;
         };
 
-        // get world space point
+        const edgeMaterial = createPrimitiveMaterial([1, 0.4, 0, 1]);
+        const fillMaterial = createPrimitiveMaterial([1, 0.4, 0, 0.15]);
+        for (let i = 0; i < 12; i++) {
+            const segmentEntity = new Entity(`annotationPreviewSegment${i}`);
+            segmentEntity.addComponent('render', {
+                type: 'box',
+                material: edgeMaterial
+            });
+            annotationPreviewRoot.addChild(segmentEntity);
+            annotationPreviewSegments.push(segmentEntity);
+        }
+        annotationPreviewDecoratorStart.addComponent('render', { type: 'box', material: edgeMaterial });
+        annotationPreviewDecoratorEnd.addComponent('render', { type: 'box', material: edgeMaterial });
+        annotationPreviewFill.addComponent('render', { type: 'box', material: fillMaterial });
+        annotationPreviewRoot.addChild(annotationPreviewDecoratorStart);
+        annotationPreviewRoot.addChild(annotationPreviewDecoratorEnd);
+        annotationPreviewRoot.addChild(annotationPreviewFill);
+        annotationPreviewRoot.enabled = false;
+        scene.contentRoot.addChild(annotationPreviewRoot);
+        annotationMeasurementLabels.forEach((label) => {
+            label.className = 'annotation-preview-measure';
+            label.style.display = 'none';
+            canvasContainer.dom.appendChild(label);
+        });
+        annotationTooltip.className = 'annotation-preview-tooltip';
+        annotationTooltipTitle.className = 'annotation-preview-tooltip-title';
+        annotationTooltipText.className = 'annotation-preview-tooltip-text';
+        annotationTooltip.appendChild(annotationTooltipTitle);
+        annotationTooltip.appendChild(annotationTooltipText);
+        annotationTooltip.style.display = 'none';
+        canvasContainer.dom.appendChild(annotationTooltip);
+
+        const currentAnnotation = () => annotationState.current;
+        const hasLabel = () => !!currentAnnotation() && Array.isArray(currentAnnotation()!.points);
+        const getPointCount = () => {
+            const annotation = currentAnnotation();
+            return annotation && hasLabel() ? 1 + (annotation.points?.length ?? 0) : 0;
+        };
+        const getSelection = () => annotationSelection;
+        const setSelection = (value: number) => {
+            annotationSelection = value;
+        };
+
+        const publishActivePoint = () => {
+            const selection = getSelection();
+            if (active && selection >= 0 && selection < getPointCount()) {
+                getPoint(selection, p);
+                events.fire('measure.activePoint', { x: p.x, y: p.y, z: p.z });
+            } else {
+                events.fire('measure.activePoint', null);
+            }
+        };
+
+        const updateToolbarState = () => {
+            statusLabel.text = `callout ${annotationState.count === 0 ? 0 : annotationState.index + 1}/${annotationState.count}`;
+            prevButton.enabled = annotationState.index > 0;
+            nextButton.enabled = annotationState.index >= 0 && annotationState.index < annotationState.count - 1;
+            cloneButton.enabled = annotationState.index >= 0;
+            deleteButton.enabled = annotationState.index >= 0;
+            clearButton.enabled = annotationState.index >= 0;
+        };
+
         const getPoint = (index: number, result: Vec3) => {
-            if (isAnnotationTool) {
-                const localPoint = getAnnotationHandleLocal(index);
-                if (!localPoint) {
+            const annotation = currentAnnotation();
+            if (!annotation) {
+                result.set(0, 0, 0);
+                return;
+            }
+            if (index === 0) {
+                result.set(annotation.position[0], annotation.position[1], annotation.position[2]);
+            } else {
+                const point = annotation.points?.[index - 1];
+                if (!point) {
                     result.set(0, 0, 0);
                     return;
                 }
-                splat.worldTransform.transformPoint(localPoint, result);
-                return;
+                result.set(point[0], point[1], point[2]);
             }
-            splat.worldTransform.transformPoint(splat.measurePoints[index], result);
         };
 
         const getPoint2d = (index: number, result: Vec3) => {
@@ -424,18 +332,73 @@ class CalloutTool {
             result.y *= canvasContainer.dom.clientHeight;
         };
 
-        const publishActivePoint = () => {
-            const selection = getSelection();
-            if (splat && active && selection >= 0 && selection < getPointCount()) {
-                getPoint(selection, p);
-                events.fire('measure.activePoint', {
-                    x: p.x,
-                    y: p.y,
-                    z: p.z
-                });
-            } else {
-                events.fire('measure.activePoint', null);
+        const setAnnotationLabel = (worldPoint: Vec3) => {
+            const annotation = currentAnnotation();
+            if (!annotation) {
+                return;
             }
+            events.fire('annotation.setGeometry', {
+                position: [worldPoint.x, worldPoint.y, worldPoint.z],
+                points: annotation.points ?? []
+            });
+        };
+
+        const setAnnotationLabelLocal = (worldPoint: Vec3) => {
+            const annotation = currentAnnotation();
+            if (!annotation) {
+                return;
+            }
+            annotation.position = [worldPoint.x, worldPoint.y, worldPoint.z];
+        };
+
+        const setAnnotationPathPoint = (index: number, worldPoint: Vec3) => {
+            const annotation = currentAnnotation();
+            if (!annotation || !annotation.points) {
+                return;
+            }
+            const points = annotation.points.map(point => [...point] as [number, number, number]);
+            points[index - 1] = [worldPoint.x, worldPoint.y, worldPoint.z];
+            events.fire('annotation.setGeometry', {
+                position: annotation.position,
+                points
+            });
+        };
+
+        const setAnnotationPathPointLocal = (index: number, worldPoint: Vec3) => {
+            const annotation = currentAnnotation();
+            if (!annotation || !annotation.points) {
+                return;
+            }
+            annotation.points[index - 1] = [worldPoint.x, worldPoint.y, worldPoint.z];
+            annotation.kind = annotation.points.length === 1 ? 'point' : (annotation.points.length === 2 ? 'line' : 'box');
+        };
+
+        const addAnnotationPoint = (worldPoint: Vec3) => {
+            const annotation = currentAnnotation();
+            if (!annotation) {
+                return;
+            }
+            const points = [...(annotation.points ?? [])].map(point => [...point] as [number, number, number]);
+            points.push([worldPoint.x, worldPoint.y, worldPoint.z]);
+            events.fire('annotation.setGeometry', {
+                position: annotation.position,
+                points
+            });
+            annotationSelection = points.length;
+        };
+
+        const removeSelectedPoint = () => {
+            const annotation = currentAnnotation();
+            if (!annotation || annotationSelection < 1 || !annotation.points) {
+                return;
+            }
+            const points = annotation.points.map(point => [...point] as [number, number, number]);
+            points.splice(annotationSelection - 1, 1);
+            events.fire('annotation.setGeometry', {
+                position: annotation.position,
+                points
+            });
+            annotationSelection = -1;
         };
 
         const useCreationSnap = () => {
@@ -453,10 +416,6 @@ class CalloutTool {
         };
 
         const snapCreatedPoint = async (targetSplat: Splat, screenX: number, screenY: number, fallback: Vec3, clampToFallback = true) => {
-            if (!targetSplat) {
-                return fallback;
-            }
-
             const positions = await getWorldPositions(targetSplat);
             const state = targetSplat.splatData.getProp('state') as Uint8Array ?? new Uint8Array(targetSplat.splatData.numSplats);
             const cameraPosition = scene.camera.position;
@@ -479,17 +438,11 @@ class CalloutTool {
 
                 const dx = p.x - screenX;
                 const dy = p.y - screenY;
-                const distSq = dx * dx + dy * dy;
-                if (distSq <= screenSearchRadius * screenSearchRadius) {
+                if (dx * dx + dy * dy <= screenSearchRadius * screenSearchRadius) {
                     p.sub2(p2, cameraPosition);
                     const depth = p.dot(cameraForward);
                     if (depth > 0) {
-                        candidates.push({
-                            x: p2.x,
-                            y: p2.y,
-                            z: p2.z,
-                            depth
-                        });
+                        candidates.push({ x: p2.x, y: p2.y, z: p2.z, depth });
                     }
                 }
             }
@@ -555,9 +508,7 @@ class CalloutTool {
                     if (!clampToFallback) {
                         return new Vec3(anchorX, anchorY, snappedZ);
                     }
-
-                    const snapOffset = Math.abs(fallback.z - snappedZ);
-                    if (refinedBest.count >= minClusterCount && snapOffset <= maxSnapOffset) {
+                    if (refinedBest.count >= minClusterCount && Math.abs(fallback.z - snappedZ) <= maxSnapOffset) {
                         return new Vec3(anchorX, anchorY, snappedZ);
                     }
                 }
@@ -567,57 +518,14 @@ class CalloutTool {
                 return new Vec3(anchorX, anchorY, anchorZ);
             }
 
-            const snapOffset = Math.abs(fallback.z - anchorZ);
-            if (bestBucket.count >= minClusterCount && snapOffset <= maxSnapOffset) {
+            if (bestBucket.count >= minClusterCount && Math.abs(fallback.z - anchorZ) <= maxSnapOffset) {
                 return new Vec3(anchorX, anchorY, anchorZ);
             }
 
             return fallback;
         };
 
-        const updateVisuals = () => {
-            gizmo.detach();
-            const selection = getSelection();
-
-            if (splat && active && selection >= 0 && selection < getPointCount()) {
-                getPoint(selection, p);
-                t.set(p, Quat.IDENTITY, Vec3.ONE);
-                events.invoke('pivot').place(t);
-                entity.setLocalPosition(p);
-                gizmo.attach(entity);
-            }
-
-            if (!isAnnotationTool && splat && splat.measurePoints.length >= 2) {
-                getPoint(0, p0);
-                getPoint(1, p1);
-                let lenMeters = p0.distance(p1);
-                if (splat.measurePoints.length >= 3) {
-                    getPoint(2, p2);
-                    lenMeters += p1.distance(p2);
-                }
-                lenMeters *= getMeasureScale();
-                const unit = getCurrentUnit();
-                const len = units[unit].toDisplay(lenMeters);
-
-                suppressUI++;
-                lengthInput.value = len;
-                lengthInput.placeholder = '';
-                lengthInput.enabled = true;
-                suppressUI--;
-            } else if (!isAnnotationTool && lengthInput) {
-                lengthInput.enabled = false;
-                lengthInput.placeholder = '';
-            }
-
-            publishActivePoint();
-            updateAnnotationPreview();
-        };
-
         const updateAnnotationPreview = () => {
-            if (!isAnnotationTool || !annotationPreviewRoot || !splat) {
-                return;
-            }
-
             annotationPreviewRoot.enabled = active;
             annotationPreviewSegments.forEach(segment => segment.enabled = false);
             annotationPreviewDecoratorStart.enabled = false;
@@ -626,37 +534,66 @@ class CalloutTool {
             annotationMeasurementLabels.forEach((label) => {
                 label.style.display = 'none';
             });
+            annotationTooltip.style.display = 'none';
 
-            if (!active || splat.annotationPoints.length < 2) {
+            const annotation = currentAnnotation();
+            if (!active || !annotation) {
+                return;
+            }
+
+            tmpA.set(annotation.position[0], annotation.position[1], annotation.position[2]);
+            scene.camera.camera.viewMatrix.transformPoint(tmpA, tmpC);
+            if (tmpC.z < 0) {
+                scene.camera.camera.worldToScreen(tmpA, tmpB);
+                const margin = 8;
+                const arrowOffset = 25;
+                annotationTooltipTitle.textContent = annotation.title ?? '';
+                annotationTooltipText.textContent = annotation.text ?? '';
+                annotationTooltip.style.setProperty('--annotation-text', `rgba(${Math.round(annotation.textColor[0] * 255)}, ${Math.round(annotation.textColor[1] * 255)}, ${Math.round(annotation.textColor[2] * 255)}, ${annotation.textColor[3]})`);
+                annotationTooltip.style.setProperty('--annotation-bg', `rgba(${Math.round(annotation.msgBoxColor[0] * 255)}, ${Math.round(annotation.msgBoxColor[1] * 255)}, ${Math.round(annotation.msgBoxColor[2] * 255)}, ${annotation.msgBoxColor[3]})`);
+                annotationTooltip.style.visibility = 'visible';
+                annotationTooltip.style.opacity = '1';
+                annotationTooltip.style.display = 'block';
+                const tw = annotationTooltip.offsetWidth;
+                const th = annotationTooltip.offsetHeight;
+                const vw = window.innerWidth;
+                const vh = window.innerHeight;
+                let left = tmpB.x + arrowOffset;
+                let top = tmpB.y - th / 2;
+                let flipped = false;
+
+                if (left + tw > vw - margin) {
+                    left = tmpB.x - arrowOffset - tw;
+                    flipped = true;
+                }
+
+                left = Math.max(margin, Math.min(left, vw - tw - margin));
+                top = Math.max(margin, Math.min(top, vh - th - margin));
+                const arrowY = Math.max(16, Math.min(tmpB.y - top, th - 16));
+                annotationTooltip.style.setProperty('--arrow-top', `${arrowY}px`);
+                annotationTooltip.classList.toggle('arrow-right', !flipped);
+                annotationTooltip.classList.toggle('arrow-left', flipped);
+                annotationTooltip.style.left = `${left}px`;
+                annotationTooltip.style.top = `${top}px`;
+            }
+
+            if (!annotation.points || annotation.points.length < 2) {
                 return;
             }
 
             const lineMaterial = annotationPreviewSegments[0].render.material as StandardMaterial;
             const fillMaterial = annotationPreviewFill.render.material as StandardMaterial;
-            const lineColor = annotationDraft?.lineColor ?? [1, 0.4, 0, 1];
-            const boxColor = annotationDraft?.boxColor ?? [1, 0.4, 0, 0.15];
-            const lineThickness = Math.max(1, annotationDraft?.lineThickness ?? 2);
-            const lineDecorator = annotationDraft?.lineDecorator ?? 'none';
-            const showMeasurement = annotationDraft?.showMeasurement === true;
-            const measurementUnit = annotationDraft?.measurementUnits ?? 'm';
+            const lineColor = annotation.lineColor;
+            const boxColor = annotation.boxColor;
+            const lineThickness = Math.max(1, annotation.lineThickness);
+            const lineDecorator = annotation.lineDecorator;
+            const showMeasurement = annotation.showMeasurement === true;
+            const measurementUnit = annotation.measurementUnits ?? 'm';
             setMaterialRgba(lineMaterial, lineColor);
             setMaterialRgba(fillMaterial, boxColor);
-            annotationPreviewSegments.forEach(segment => syncRenderOpacity(segment, lineColor[3]));
-            syncRenderOpacity(annotationPreviewDecoratorStart, lineColor[3]);
-            syncRenderOpacity(annotationPreviewDecoratorEnd, lineColor[3]);
-            syncRenderOpacity(annotationPreviewFill, boxColor[3]);
 
-            const worldPoints = splat.annotationPoints.map((point) => {
-                const worldPoint = new Vec3();
-                splat.worldTransform.transformPoint(point, worldPoint);
-                return worldPoint;
-            });
-
-            const anchor = splat.annotationLabelPosition ? (() => {
-                const worldPoint = new Vec3();
-                splat.worldTransform.transformPoint(splat.annotationLabelPosition, worldPoint);
-                return worldPoint;
-            })() : worldPoints[0];
+            const worldPoints = annotation.points.map(point => new Vec3(point[0], point[1], point[2]));
+            const anchor = new Vec3(annotation.position[0], annotation.position[1], annotation.position[2]);
             const thickness = computeThicknessWorld(anchor, lineThickness);
 
             if (worldPoints.length === 2) {
@@ -683,16 +620,14 @@ class CalloutTool {
                 if (showMeasurement) {
                     tmpA.add2(worldPoints[0], worldPoints[1]).mulScalar(0.5);
                     scene.camera.camera.viewMatrix.transformPoint(tmpA, tmpC);
-                    if (tmpC.z >= 0) {
-                        annotationMeasurementLabels[0].style.display = 'none';
-                        return;
+                    if (tmpC.z < 0) {
+                        scene.camera.camera.worldToScreen(tmpA, tmpB);
+                        const meters = worldPoints[0].distance(worldPoints[1]) * getMeasureScale();
+                        annotationMeasurementLabels[0].textContent = `${formatLength(units[measurementUnit].toDisplay(meters))} ${units[measurementUnit].suffix}`;
+                        annotationMeasurementLabels[0].style.left = `${tmpB.x}px`;
+                        annotationMeasurementLabels[0].style.top = `${tmpB.y}px`;
+                        annotationMeasurementLabels[0].style.display = 'block';
                     }
-                    scene.camera.camera.worldToScreen(tmpA, tmpB);
-                    const meters = worldPoints[0].distance(worldPoints[1]) * getMeasureScale();
-                    annotationMeasurementLabels[0].textContent = `${formatLength(units[measurementUnit].toDisplay(meters))} ${units[measurementUnit].suffix}`;
-                    annotationMeasurementLabels[0].style.left = `${tmpB.x}px`;
-                    annotationMeasurementLabels[0].style.top = `${tmpB.y}px`;
-                    annotationMeasurementLabels[0].style.display = 'block';
                 }
                 return;
             }
@@ -742,18 +677,31 @@ class CalloutTool {
                 labelPairs.forEach(([start, end], idx) => {
                     tmpA.add2(start, end).mulScalar(0.5);
                     scene.camera.camera.viewMatrix.transformPoint(tmpA, tmpC);
-                    if (tmpC.z >= 0) {
-                        annotationMeasurementLabels[idx].style.display = 'none';
-                        return;
+                    if (tmpC.z < 0) {
+                        scene.camera.camera.worldToScreen(tmpA, tmpB);
+                        const meters = start.distance(end) * getMeasureScale();
+                        annotationMeasurementLabels[idx].textContent = `${formatLength(units[measurementUnit].toDisplay(meters))} ${units[measurementUnit].suffix}`;
+                        annotationMeasurementLabels[idx].style.left = `${tmpB.x}px`;
+                        annotationMeasurementLabels[idx].style.top = `${tmpB.y}px`;
+                        annotationMeasurementLabels[idx].style.display = 'block';
                     }
-                    scene.camera.camera.worldToScreen(tmpA, tmpB);
-                    const meters = start.distance(end) * getMeasureScale();
-                    annotationMeasurementLabels[idx].textContent = `${formatLength(units[measurementUnit].toDisplay(meters))} ${units[measurementUnit].suffix}`;
-                    annotationMeasurementLabels[idx].style.left = `${tmpB.x}px`;
-                    annotationMeasurementLabels[idx].style.top = `${tmpB.y}px`;
-                    annotationMeasurementLabels[idx].style.display = 'block';
                 });
             }
+        };
+
+        const updateVisuals = () => {
+            gizmo.detach();
+            const selection = getSelection();
+            if (active && selection >= 0 && selection < getPointCount()) {
+                getPoint(selection, p);
+                t.set(p, q.set(0, 0, 0, 1), Vec3.ONE);
+                events.invoke('pivot').place(t);
+                entity.setLocalPosition(p);
+                gizmo.attach(entity);
+            }
+            publishActivePoint();
+            updateToolbarState();
+            updateAnnotationPreview();
         };
 
         gizmo.on('render:update', () => {
@@ -767,6 +715,7 @@ class CalloutTool {
         gizmo.on('transform:start', () => {
             const activeAxis = (gizmo as typeof gizmo & { _selectedAxis?: string })._selectedAxis;
             snapDraggedPoint = useCreationSnap() && !ctrlPressed && activeAxis === 'xyz';
+            draggingHandle = true;
             events.invoke('pivot').start();
         });
 
@@ -780,244 +729,133 @@ class CalloutTool {
 
         events.on('selection.changed', (selection: Splat) => {
             splat = selection;
-            settingAnnotationPosition = false;
+        });
+
+        events.on('annotation.selectLabel', () => {
             if (active) {
-                // for now we always deactivate the tool so the current transform handler remains in place
-                events.fire('tool.deactivate');
+                annotationSelection = currentAnnotation() ? 0 : -1;
+                updateVisuals();
             }
-        });
-
-        events.on('annotation.beginSetPosition', () => {
-            if (isAnnotationTool && active) {
-                settingAnnotationPosition = true;
-            }
-        });
-
-        events.on('pivot.started', () => {
-
         });
 
         events.on('pivot.moved', () => {
             const selection = getSelection();
-            if (active && splat && selection >= 0 && selection < getPointCount()) {
-                const p = events.invoke('pivot').transform.position;
-                mat.invert(splat.worldTransform);
-                mat.transformPoint(p, p2);
-                if (isAnnotationTool) {
-                    setAnnotationHandleLocal(selection, p2);
+            if (active && selection >= 0 && selection < getPointCount()) {
+                const pivot = events.invoke('pivot').transform.position as Vec3;
+                if (selection === 0) {
+                    setAnnotationLabelLocal(pivot);
                 } else {
-                    splat.measurePoints[selection].copy(p2);
+                    setAnnotationPathPointLocal(selection, pivot);
                 }
                 publishActivePoint();
+                updateAnnotationPreview();
             }
             scene.forceRender = true;
         });
 
         events.on('pivot.ended', () => {
             const selection = getSelection();
-            if (active && splat && selection >= 0 && selection < getPointCount()) {
-                const draggedIndex = selection;
-                const targetSplat = splat;
-                const finalize = async () => {
-                    if (snapDraggedPoint) {
-                        getPoint(draggedIndex, p);
-                        const draggedPoint = p.clone();
-                        scene.camera.worldToScreen(draggedPoint, p2);
-
-                        try {
-                            const screenX = p2.x * canvasContainer.dom.clientWidth;
-                            const screenY = p2.y * canvasContainer.dom.clientHeight;
-                            const result = await scene.camera.intersect(
-                                screenX / canvasContainer.dom.clientWidth,
-                                screenY / canvasContainer.dom.clientHeight
-                            );
-                            const snapped = result ?
-                                await snapCreatedPoint(result.splat, screenX, screenY, result.position) :
-                                draggedPoint;
-                            if (draggedIndex < (isAnnotationTool ? ((targetSplat.annotationLabelPosition ? 1 : 0) + targetSplat.annotationPoints.length) : targetSplat.measurePoints.length)) {
-                                mat.invert(targetSplat.worldTransform);
-                                mat.transformPoint(snapped, p2);
-                                if (isAnnotationTool) {
-                                    if (draggedIndex === 0) {
-                                        targetSplat.annotationLabelPosition = p2.clone();
-                                        targetSplat.worldTransform.transformPoint(p2, p);
-                                        updatingAnnotationDraft = true;
-                                        events.fire('annotation.setDraft', {
-                                            position: [p.x, p.y, p.z]
-                                        });
-                                        updatingAnnotationDraft = false;
-                                    } else {
-                                        targetSplat.annotationPoints[draggedIndex - 1].copy(p2);
-                                    }
-                                } else {
-                                    targetSplat.measurePoints[draggedIndex].copy(p2);
-                                }
-                                getPoint(draggedIndex, p);
-                                t.set(p, Quat.IDENTITY, Vec3.ONE);
-                                events.invoke('pivot').place(t);
-                                scene.forceRender = true;
-                            }
-                        } catch {
-                            // keep dragged position if snap fails
-                        }
-                    }
-
-                    snapDraggedPoint = false;
-                    updateVisuals();
-                };
-
-                void finalize();
+            if (!active || selection < 0 || selection >= getPointCount()) {
+                return;
             }
+
+            const finalize = async () => {
+                if (snapDraggedPoint) {
+                    getPoint(selection, p);
+                    const draggedPoint = p.clone();
+                    scene.camera.worldToScreen(draggedPoint, p2);
+                    const screenX = p2.x * canvasContainer.dom.clientWidth;
+                    const screenY = p2.y * canvasContainer.dom.clientHeight;
+                    const result = await scene.camera.intersect(
+                        screenX / canvasContainer.dom.clientWidth,
+                        screenY / canvasContainer.dom.clientHeight
+                    );
+                    const snapped = result ? await snapCreatedPoint(result.splat, screenX, screenY, result.position) : draggedPoint;
+                    if (selection === 0) {
+                        setAnnotationLabelLocal(snapped);
+                        setAnnotationLabel(snapped);
+                    } else {
+                        setAnnotationPathPointLocal(selection, snapped);
+                        setAnnotationPathPoint(selection, snapped);
+                    }
+                    getPoint(selection, p);
+                    t.set(p, q.set(0, 0, 0, 1), Vec3.ONE);
+                    events.invoke('pivot').place(t);
+                    scene.forceRender = true;
+                } else {
+                    const annotation = currentAnnotation();
+                    if (annotation) {
+                        events.fire('annotation.setGeometry', {
+                            position: annotation.position,
+                            points: annotation.points ?? []
+                        });
+                    }
+                }
+
+                snapDraggedPoint = false;
+                draggingHandle = false;
+                updateVisuals();
+            };
+
+            void finalize();
         });
 
-        const origTransform = new Mat4();
-        const origP = new Vec3();
-        const origR = new Quat();
-        const origS = new Vec3();
-        const mid = new Vec3();
-        let startLen = 0;
-
-        const startScale = () => {
-            if (!splat || splat.measurePoints.length < 2) {
-                return;
+        events.on('annotations.stateChanged', (state: { count: number, index: number, current: AnnotationData | null }) => {
+            annotationState = state;
+            if (annotationSelection >= getPointCount()) {
+                annotationSelection = -1;
             }
-
-            origTransform.copy(splat.worldTransform);
-            origP.copy(splat.entity.getLocalPosition());
-            origR.copy(splat.entity.getLocalRotation());
-            origS.copy(splat.entity.getLocalScale());
-
-            getPoint(0, p0);
-            getPoint(1, p1);
-            if (splat.measurePoints.length >= 3) {
-                getPoint(2, p2);
-                startLen = p0.distance(p1) + p1.distance(p2);
-                mid.add2(p0, p2).mulScalar(0.5);
-            } else {
-                mid.sub2(p1, p0);
-                startLen = mid.length();
-                mid.mulScalar(0.5).add(p0);
-            }
-        };
-
-        // position and scale the splat according to the new length
-        const applyLength = (newLength: number) => {
-            if (!splat || splat.measurePoints.length < 2 || newLength <= 0) {
-                return;
-            }
-
-            const measureScale = getMeasureScale();
-            const unit = getCurrentUnit();
-            const rawLength = units[unit].toMeters(newLength) / measureScale;
-            const scale = rawLength / startLen;
-
-            // calculate mid point
-            p.copy(mid);
-
-            // construct a transform matrix that scales from p by len * 0.5
-            mat1.setTranslate(-p.x, -p.y, -p.z);
-            mat2.setScale(scale, scale, scale);
-            mat3.setTranslate(p.x, p.y, p.z);
-
-            mat.mul2(mat1, origTransform);
-            mat.mul2(mat2, mat);
-            mat.mul2(mat3, mat);
-
-            mat.getTranslation(p);
-            r.setFromMat4(mat);
-            mat.getScale(s);
-
-            splat.entity.setLocalPosition(p);
-            splat.entity.setLocalRotation(r);
-            splat.entity.setLocalScale(s);
-
-            scene.forceRender = true;
-        };
-
-        const endScale = () => {
-            const top = new EntityTransformOp({
-                splat: splat,
-                oldt: new Transform(origP, origR, origS),
-                newt: new Transform(splat.entity.getLocalPosition(), splat.entity.getLocalRotation(), splat.entity.getLocalScale())
-            });
-
-            events.fire('edit.add', top);
-            updateVisuals();
-        };
-
-        if (lengthInput && lengthUnit) {
-            let dragging = false;
-
-            // handle length input updates
-            lengthInput.on('slider:mousedown', () => {
-                startScale();
-                dragging = true;
-            });
-            lengthInput.on('change', (value) => {
-                if (dragging) {
-                    applyLength(value);
-                } else if (!suppressUI) {
-                    startScale();
-                    applyLength(value);
-                    endScale();
-                }
-            });
-            lengthInput.on('slider:mouseup', () => {
-                endScale();
-                dragging = false;
-            });
-
-            lengthUnit.on('change', () => {
-                updateVisuals();
-            });
-        }
-
-        if (copyButton) {
-            copyButton.on('click', () => {
-                events.fire('annotation.copy');
-            });
-        }
-
-        clearButton.on('click', () => {
-            if (splat) {
-                if (isAnnotationTool) {
-                    splat.annotationLabelPosition = null;
-                    splat.annotationPoints.length = 0;
-                    splat.annotationSelection = -1;
-                    updatingAnnotationDraft = true;
-                    events.fire('annotation.setDraft', {
-                        position: [0, 0, 0]
+            if (zoomAfterNavigation) {
+                zoomAfterNavigation = false;
+                const initial = state.current?.camera?.initial;
+                if (initial) {
+                    events.fire('camera.setPose', {
+                        position: new Vec3(initial.position[0], initial.position[1], initial.position[2]),
+                        target: new Vec3(initial.target[0], initial.target[1], initial.target[2]),
+                        fov: initial.fov
                     });
-                    updatingAnnotationDraft = false;
-                } else {
-                    splat.measurePoints.length = 0;
-                    splat.measureSelection = -1;
                 }
-                updateVisuals();
             }
+            if (draggingHandle) {
+                return;
+            }
+            updateVisuals();
         });
 
         events.on('select.delete', () => {
-            const selection = getSelection();
-            if (active && splat && selection >= 0 && selection < getPointCount()) {
-                if (isAnnotationTool) {
-                    if (selection === 0) {
-                        splat.annotationLabelPosition = null;
-                        updatingAnnotationDraft = true;
-                        events.fire('annotation.setDraft', {
-                            position: [0, 0, 0]
-                        });
-                        updatingAnnotationDraft = false;
-                    } else {
-                        splat.annotationPoints.splice(selection - 1, 1);
-                    }
-                    splat.annotationSelection = -1;
-                } else {
-                    splat.measurePoints.splice(selection, 1);
-                    splat.measureSelection--;
-                }
-                updateVisuals();
+            if (active && annotationSelection > 0) {
+                removeSelectedPoint();
             }
+        });
+
+        prevButton.on('click', () => {
+            annotationSelection = -1;
+            zoomAfterNavigation = true;
+            events.fire('annotation.prev');
+        });
+        nextButton.on('click', () => {
+            annotationSelection = -1;
+            zoomAfterNavigation = true;
+            events.fire('annotation.next');
+        });
+        newButton.on('click', () => {
+            annotationSelection = -1;
+            events.fire('annotation.new');
+        });
+        cloneButton.on('click', () => {
+            annotationSelection = -1;
+            events.fire('annotation.cloneCurrent');
+        });
+        deleteButton.on('click', () => {
+            annotationSelection = -1;
+            events.fire('annotation.deleteCurrent');
+        });
+        clearButton.on('click', () => {
+            annotationSelection = -1;
+            events.fire('annotation.clearPath');
+        });
+        exportButton.on('click', () => {
+            void events.invoke('scene.export', 'config');
         });
 
         const isPrimary = (e: PointerEvent) => {
@@ -1036,145 +874,75 @@ class CalloutTool {
             clicked = false;
         };
 
-        const setAnnotationLabelFromWorldPoint = (worldPoint: Vec3) => {
-            mat.invert(splat.worldTransform);
-            mat.transformPoint(worldPoint, p2);
-            splat.annotationLabelPosition = p2.clone();
-            updatingAnnotationDraft = true;
-            events.fire('annotation.setDraft', {
-                position: [worldPoint.x, worldPoint.y, worldPoint.z]
-            });
-            updatingAnnotationDraft = false;
-        };
-
-        const addAnnotationPointFromWorldPoint = (worldPoint: Vec3) => {
-            mat.invert(splat.worldTransform);
-            mat.transformPoint(worldPoint, p);
-            splat.annotationSelection = splat.annotationPoints.length + 1;
-            splat.annotationPoints.push(p.clone());
-            updateVisuals();
-        };
-
         const pointerup = async (e: PointerEvent) => {
-            if (splat && clicked && isPrimary(e)) {
-                clicked = false;
+            if (!clicked || !isPrimary(e)) {
+                return;
+            }
+            clicked = false;
 
-                if (isAnnotationTool && settingAnnotationPosition) {
-                    settingAnnotationPosition = false;
-                    const result = await scene.camera.intersect(e.offsetX / canvasContainer.dom.clientWidth, e.offsetY / canvasContainer.dom.clientHeight);
-                    if (result) {
-                        let worldPoint = result.position.clone();
-                        if (useCreationSnap() && !e.ctrlKey) {
-                            try {
-                                worldPoint = await snapCreatedPoint(result.splat, e.offsetX, e.offsetY, result.position);
-                            } catch {
-                                // keep raw hit if snap fails
-                            }
-                        }
-                        setAnnotationLabelFromWorldPoint(worldPoint);
-                        splat.annotationSelection = 0;
-                        updateVisuals();
-                    }
+            if (!currentAnnotation()) {
+                events.fire('annotation.new');
+            }
+            const annotation = currentAnnotation();
+            if (!annotation) {
+                return;
+            }
 
+            for (let i = 0; i < getPointCount(); i++) {
+                getPoint2d(i, p);
+                if (Math.abs(p.x - e.offsetX) < 8 && Math.abs(p.y - e.offsetY) < 8) {
+                    setSelection(i);
+                    updateVisuals();
                     e.preventDefault();
                     e.stopPropagation();
                     return;
                 }
-
-                let closestIdx = -1;
-
-                // check for intersection with existing point
-                for (let i = 0; i < getPointCount(); i++) {
-                    getPoint2d(i, p);
-
-                    if (Math.abs(p.x - e.offsetX) < 8 && Math.abs(p.y - e.offsetY) < 8) {
-                        closestIdx = i;
-                        break;
-                    }
-                }
-
-                if (closestIdx >= 0) {
-                    setSelection(closestIdx);
-                    updateVisuals();
-                    return;
-                }
-
-                if (isAnnotationTool) {
-                    if (!splat.annotationLabelPosition) {
-                        const result = await scene.camera.intersect(e.offsetX / canvasContainer.dom.clientWidth, e.offsetY / canvasContainer.dom.clientHeight);
-                        if (result) {
-                            let worldPoint = result.position.clone();
-                            if (useCreationSnap() && !e.ctrlKey) {
-                                try {
-                                    worldPoint = await snapCreatedPoint(result.splat, e.offsetX, e.offsetY, result.position);
-                                } catch {
-                                }
-                            }
-                            setAnnotationLabelFromWorldPoint(worldPoint);
-                            addAnnotationPointFromWorldPoint(worldPoint);
-                            updateVisuals();
-                        }
-                    } else if (splat.annotationPoints.length < 3) {
-                        const result = await scene.camera.intersect(e.offsetX / canvasContainer.dom.clientWidth, e.offsetY / canvasContainer.dom.clientHeight);
-                        if (result) {
-                            addAnnotationPointFromWorldPoint(result.position);
-
-                            if (useCreationSnap() && !e.ctrlKey) {
-                                const insertedIndex = splat.annotationSelection;
-                                const targetSplat = splat;
-                                void (async () => {
-                                    try {
-                                        const snapped = await snapCreatedPoint(result.splat, e.offsetX, e.offsetY, result.position);
-                                        if (!active || splat !== targetSplat || targetSplat.annotationSelection !== insertedIndex || insertedIndex - 1 >= targetSplat.annotationPoints.length) {
-                                            return;
-                                        }
-
-                                        mat.invert(targetSplat.worldTransform);
-                                        mat.transformPoint(snapped, targetSplat.annotationPoints[insertedIndex - 1]);
-                                        updateVisuals();
-                                    } catch {
-                                    }
-                                })();
-                            }
-                        }
-                    }
-                } else if (splat.measurePoints.length < 3) {
-                    const result = await scene.camera.intersect(e.offsetX / canvasContainer.dom.clientWidth, e.offsetY / canvasContainer.dom.clientHeight);
-                    if (result) {
-                        mat.invert(splat.worldTransform);
-                        mat.transformPoint(result.position, p);
-                        splat.measureSelection = splat.measurePoints.length;
-                        splat.measurePoints.push(p.clone());
-                        updateVisuals();
-
-                        if (useCreationSnap() && !e.ctrlKey) {
-                            const insertedIndex = splat.measureSelection;
-                            const targetSplat = splat;
-                            void (async () => {
-                                try {
-                                    const snapped = await snapCreatedPoint(result.splat, e.offsetX, e.offsetY, result.position);
-                                    if (!active || splat !== targetSplat || targetSplat.measureSelection !== insertedIndex || insertedIndex >= targetSplat.measurePoints.length) {
-                                        return;
-                                    }
-
-                                    mat.invert(targetSplat.worldTransform);
-                                    mat.transformPoint(snapped, targetSplat.measurePoints[insertedIndex]);
-                                    updateVisuals();
-                                } catch {
-                                    // keep the initially created point if snapping fails
-                                }
-                            })();
-                        }
-                    }
-                }
-
-                e.preventDefault();
-                e.stopPropagation();
             }
+
+            const result = await scene.camera.intersect(e.offsetX / canvasContainer.dom.clientWidth, e.offsetY / canvasContainer.dom.clientHeight);
+            if (!result) {
+                return;
+            }
+
+            const createSnappedWorld = async () => {
+                if (useCreationSnap() && !e.ctrlKey) {
+                    try {
+                        return await snapCreatedPoint(result.splat, e.offsetX, e.offsetY, result.position);
+                    } catch {
+                        return result.position.clone();
+                    }
+                }
+                return result.position.clone();
+            };
+
+            const points = annotation.points ?? [];
+            if (points.length === 0) {
+                const worldPoint = await createSnappedWorld();
+                setAnnotationLabel(worldPoint);
+                addAnnotationPoint(worldPoint);
+                updateVisuals();
+            } else if (points.length < 3) {
+                addAnnotationPoint(result.position);
+                updateVisuals();
+                if (useCreationSnap() && !e.ctrlKey) {
+                    const insertedIndex = annotationSelection;
+                    void (async () => {
+                        const snapped = await createSnappedWorld();
+                        if (!active || insertedIndex !== annotationSelection) {
+                            return;
+                        }
+                        setAnnotationPathPoint(insertedIndex, snapped);
+                        updateVisuals();
+                    })();
+                }
+            }
+
+            e.preventDefault();
+            e.stopPropagation();
         };
 
         events.on('postrender', () => {
-            if (isAnnotationTool && active && splat) {
+            if (active) {
                 updateAnnotationPreview();
             }
 
@@ -1185,111 +953,49 @@ class CalloutTool {
             lineEnd.setAttribute('visibility', 'hidden');
             lineExtra.setAttribute('visibility', 'hidden');
 
-            if (!(active && splat)) {
+            if (!active || !currentAnnotation() || !hasLabel()) {
                 return;
             }
 
-            if (isAnnotationTool) {
-                if (splat.annotationLabelPosition) {
-                    getPoint2d(0, p);
-                    lineStart.setAttribute('cx', p.x.toString());
-                    lineStart.setAttribute('cy', p.y.toString());
-                    lineStart.setAttribute('visibility', 'visible');
-                }
+            getPoint2d(0, p);
+            lineStart.setAttribute('cx', p.x.toString());
+            lineStart.setAttribute('cy', p.y.toString());
+            lineStart.setAttribute('visibility', 'visible');
 
-                for (let i = 0; i < splat.annotationPoints.length; i++) {
-                    getPoint2d(i + 1, p);
-                    const x = p.x.toString();
-                    const y = p.y.toString();
-                    const handle = i === 0 ? lineMid : (i === 1 ? lineEnd : lineExtra);
-                    handle.setAttribute('cx', x);
-                    handle.setAttribute('cy', y);
-                    handle.setAttribute('visibility', 'visible');
+            const points = currentAnnotation()!.points ?? [];
+            const showConstructionPolyline = points.length < 3;
+            for (let i = 0; i < points.length; i++) {
+                getPoint2d(i + 1, p);
+                const x = p.x.toString();
+                const y = p.y.toString();
+                const handle = i === 0 ? lineMid : (i === 1 ? lineEnd : lineExtra);
+                handle.setAttribute('cx', x);
+                handle.setAttribute('cy', y);
+                handle.setAttribute('visibility', 'visible');
 
-                    if (i === 0 && splat.annotationPoints.length > 1) {
-                        line.setAttribute('x1', x);
-                        line.setAttribute('y1', y);
-                    } else if (i === 1) {
-                        line.setAttribute('x2', x);
-                        line.setAttribute('y2', y);
-                        if (splat.annotationPoints.length > 2) {
-                            line2.setAttribute('x1', x);
-                            line2.setAttribute('y1', y);
-                        }
-                    } else if (i === 2) {
-                        line2.setAttribute('x2', x);
-                        line2.setAttribute('y2', y);
-                    }
-                }
-
-                line.setAttribute('visibility', splat.annotationPoints.length > 1 ? 'visible' : 'hidden');
-                line2.setAttribute('visibility', splat.annotationPoints.length > 2 ? 'visible' : 'hidden');
-                return;
-            }
-
-            line.setAttribute('visibility', splat.measurePoints.length > 1 ? 'visible' : 'hidden');
-            line2.setAttribute('visibility', splat.measurePoints.length > 2 ? 'visible' : 'hidden');
-
-            for (let i = 0; i < 3; i++) {
-                if (i < splat.measurePoints.length) {
-                    getPoint2d(i, p);
-
-                    const x = p.x.toString();
-                    const y = p.y.toString();
-
-                    if (i === 0) {
-                        line.setAttribute('x1', x);
-                        line.setAttribute('y1', y);
-                        lineStart.setAttribute('cx', x);
-                        lineStart.setAttribute('cy', y);
-                        lineStart.setAttribute('visibility', 'visible');
-                    } else if (i === 1) {
-                        line.setAttribute('x2', x);
-                        line.setAttribute('y2', y);
+                if (i === 0 && points.length > 1) {
+                    line.setAttribute('x1', x);
+                    line.setAttribute('y1', y);
+                } else if (i === 1) {
+                    line.setAttribute('x2', x);
+                    line.setAttribute('y2', y);
+                    if (points.length > 2) {
                         line2.setAttribute('x1', x);
                         line2.setAttribute('y1', y);
-                        lineMid.setAttribute('cx', x);
-                        lineMid.setAttribute('cy', y);
-                        lineMid.setAttribute('visibility', 'visible');
-                    } else if (i === 2) {
-                        line2.setAttribute('x2', x);
-                        line2.setAttribute('y2', y);
-                        lineEnd.setAttribute('cx', x);
-                        lineEnd.setAttribute('cy', y);
-                        lineEnd.setAttribute('visibility', 'visible');
                     }
+                } else if (i === 2) {
+                    line2.setAttribute('x2', x);
+                    line2.setAttribute('y2', y);
                 }
             }
-        });
 
-        if (isAnnotationTool) {
-            events.on('annotation.draftChanged', (draft: {
-                position: [number, number, number],
-                lineColor?: [number, number, number, number],
-                boxColor?: [number, number, number, number],
-                lineThickness?: number,
-                lineDecorator?: 'none' | 'box' | 'arrowheads'
-            }) => {
-                annotationDraft = draft;
-                if (!active || !splat || updatingAnnotationDraft || !draft?.position) {
-                    updateAnnotationPreview();
-                    return;
-                }
-                p.set(draft.position[0], draft.position[1], draft.position[2]);
-                mat.invert(splat.worldTransform);
-                mat.transformPoint(p, p2);
-                splat.annotationLabelPosition = p2.clone();
-                updateVisuals();
-            });
-        }
+            line.setAttribute('visibility', showConstructionPolyline && points.length > 1 ? 'visible' : 'hidden');
+            line2.setAttribute('visibility', showConstructionPolyline && points.length > 2 ? 'visible' : 'hidden');
+        });
 
         const updateGizmoSize = () => {
             const { camera, canvas } = scene;
-            if (camera.ortho) {
-                gizmo.size = 1125 / canvas.clientHeight;
-            } else {
-                gizmo.size = 1200 / Math.max(canvas.clientWidth, canvas.clientHeight);
-            }
+            gizmo.size = camera.ortho ? 1125 / canvas.clientHeight : 1200 / Math.max(canvas.clientWidth, canvas.clientHeight);
         };
         updateGizmoSize();
         events.on('camera.resize', updateGizmoSize);
@@ -1308,6 +1014,16 @@ class CalloutTool {
 
         this.activate = () => {
             active = true;
+            splat = events.invoke('selection') as Splat | null;
+            annotationState = events.invoke('annotations.state') as typeof annotationState;
+            const initial = annotationState.current?.camera?.initial;
+            if (initial) {
+                events.fire('camera.setPose', {
+                    position: new Vec3(initial.position[0], initial.position[1], initial.position[2]),
+                    target: new Vec3(initial.target[0], initial.target[1], initial.target[2]),
+                    fov: initial.fov
+                });
+            }
             updateVisuals();
             canvasContainer.dom.addEventListener('pointerdown', pointerdown);
             canvasContainer.dom.addEventListener('pointermove', pointermove);
@@ -1318,18 +1034,16 @@ class CalloutTool {
             parent.style.display = 'block';
             parent.classList.add('noevents');
             svg.classList.remove('hidden');
-            if (annotationPreviewRoot) {
-                annotationPreviewRoot.enabled = true;
-            }
-
+            annotationPreviewRoot.enabled = true;
             events.fire('transformHandler.push', transformHandler);
         };
 
         this.deactivate = () => {
             active = false;
             snapDraggedPoint = false;
-            settingAnnotationPosition = false;
             ctrlPressed = false;
+            annotationSelection = -1;
+            draggingHandle = false;
             updateVisuals();
             canvasContainer.dom.removeEventListener('pointerdown', pointerdown);
             canvasContainer.dom.removeEventListener('pointermove', pointermove);
@@ -1340,13 +1054,11 @@ class CalloutTool {
             parent.style.display = 'none';
             parent.classList.remove('noevents');
             svg.classList.add('hidden');
-            if (annotationPreviewRoot) {
-                annotationPreviewRoot.enabled = false;
-            }
+            annotationPreviewRoot.enabled = false;
             annotationMeasurementLabels.forEach((label) => {
                 label.style.display = 'none';
             });
-
+            annotationTooltip.style.display = 'none';
             events.fire('transformHandler.pop');
         };
     }

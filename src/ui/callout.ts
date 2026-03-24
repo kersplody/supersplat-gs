@@ -1,4 +1,5 @@
-import { BooleanInput, Button, ColorPicker, Container, ContainerArgs, Label, NumericInput, SelectInput, TextAreaInput, TextInput, VectorInput } from '@playcanvas/pcui';
+import { BooleanInput, Button, ColorPicker, Container, ContainerArgs, Label, NumericInput, SelectInput, TextAreaInput, TextInput } from '@playcanvas/pcui';
+import { Vec3 } from 'playcanvas';
 
 import { Events } from '../events';
 import { localize } from './localization';
@@ -14,7 +15,14 @@ type AnnotationDraft = {
     lineThickness: number,
     boxColor: [number, number, number, number],
     showMeasurement: boolean,
-    measurementUnits: 'm' | 'ft' | 'in' | 'cm'
+    measurementUnits: 'm' | 'ft' | 'in' | 'cm',
+    camera?: {
+        initial: {
+            position: [number, number, number],
+            target: [number, number, number],
+            fov: number
+        }
+    }
 };
 
 class Callout extends Container {
@@ -38,17 +46,19 @@ class Callout extends Container {
             return container;
         };
 
-        const positionInput = new VectorInput({
-            class: 'callout-expand',
-            precision: 3,
-            dimensions: 3,
-            placeholder: ['X', 'Y', 'Z'],
-            value: [0, 0, 0]
-        });
-
         const positionSetButton = new Button({
             class: ['select-toolbar-button', 'callout-set-button'],
             text: localize('panel.scene-manager.callout.position-set')
+        });
+
+        const captureCameraButton = new Button({
+            class: ['select-toolbar-button', 'callout-set-button'],
+            text: localize('panel.scene-manager.callout.capture-camera')
+        });
+
+        const zoomButton = new Button({
+            class: ['select-toolbar-button', 'callout-set-button'],
+            text: localize('panel.scene-manager.callout.zoom')
         });
 
         const titleInput = new TextInput({
@@ -117,7 +127,11 @@ class Callout extends Container {
             ]
         });
 
-        this.append(row(localize('panel.scene-manager.callout.position'), positionInput, 'callout-row', [positionSetButton]));
+        this.append(row(localize('panel.scene-manager.callout.position-anchor'), new Label({
+            class: 'callout-expand',
+            text: ''
+        }), 'callout-row', [positionSetButton]));
+        this.append(row(localize('panel.scene-manager.callout.camera'), zoomButton, 'callout-row', [captureCameraButton]));
         this.append(row(localize('panel.scene-manager.callout.title'), titleInput));
         this.append(row(localize('panel.scene-manager.callout.text'), textInput, ['callout-row', 'callout-row-multiline']));
         this.append(row(localize('panel.scene-manager.callout.text-color'), textColorInput));
@@ -126,17 +140,14 @@ class Callout extends Container {
         this.append(row(localize('panel.scene-manager.callout.line-decorator'), lineDecoratorInput));
         this.append(row(localize('panel.scene-manager.callout.line-thickness'), lineThicknessInput));
         this.append(row(localize('panel.scene-manager.callout.box-color'), boxColorInput));
-        this.append(row(localize('panel.scene-manager.callout.show-measurement'), showMeasurementInput));
-        this.append(row(localize('panel.scene-manager.callout.measurement-units'), measurementUnitsInput));
+        this.append(row(localize('panel.scene-manager.callout.show-measurement'), showMeasurementInput, 'callout-row', [measurementUnitsInput]));
 
         let uiUpdating = false;
-
         const setDraft = (draft: AnnotationDraft) => {
             if (!draft) {
                 return;
             }
             uiUpdating = true;
-            positionInput.value = draft.position;
             titleInput.value = draft.title;
             textInput.value = draft.text;
             textColorInput.value = draft.textColor;
@@ -156,7 +167,6 @@ class Callout extends Container {
             }
 
             events.fire('annotation.setDraft', {
-                position: positionInput.value as [number, number, number],
                 title: titleInput.value,
                 text: textInput.value,
                 textColor: textColorInput.value as [number, number, number, number],
@@ -171,7 +181,6 @@ class Callout extends Container {
         };
 
         [
-            positionInput,
             titleInput,
             textInput,
             textColorInput,
@@ -187,7 +196,40 @@ class Callout extends Container {
         });
 
         positionSetButton.on('click', () => {
-            events.fire('annotation.beginSetPosition');
+            events.fire('annotation.selectLabel');
+        });
+
+        captureCameraButton.on('click', () => {
+            const pose = events.invoke('camera.getPose') as
+                | { position: { x: number, y: number, z: number }, target: { x: number, y: number, z: number }, fov: number }
+                | undefined;
+            if (!pose) {
+                return;
+            }
+
+            events.fire('annotation.setDraft', {
+                camera: {
+                    initial: {
+                        position: [pose.position.x, pose.position.y, pose.position.z],
+                        target: [pose.target.x, pose.target.y, pose.target.z],
+                        fov: pose.fov
+                    }
+                }
+            });
+        });
+
+        zoomButton.on('click', () => {
+            const draft = events.invoke('annotation.draft') as AnnotationDraft | undefined;
+            const initial = draft?.camera?.initial;
+            if (!initial) {
+                return;
+            }
+
+            events.fire('camera.setPose', {
+                position: new Vec3(initial.position[0], initial.position[1], initial.position[2]),
+                target: new Vec3(initial.target[0], initial.target[1], initial.target[2]),
+                fov: initial.fov
+            });
         });
 
         events.on('annotation.draftChanged', (draft: AnnotationDraft) => {
