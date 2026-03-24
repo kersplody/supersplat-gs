@@ -12,6 +12,7 @@ import pickerSvg from './svg/select-picker.svg';
 import polygonSvg from './svg/select-poly.svg';
 import sphereSvg from './svg/select-sphere.svg';
 import boxSvg from './svg/show-hide-splats.svg';
+import annotationSvg from './svg/annotation.svg';
 import undoSvg from './svg/undo.svg';
 import { Tooltips } from './tooltips';
 // import cropSvg from './svg/crop.svg';
@@ -115,6 +116,11 @@ class BottomToolbar extends Container {
             icon: 'E358'
         });
 
+        const annotation = new Button({
+            id: 'bottom-toolbar-annotation',
+            class: 'bottom-toolbar-tool'
+        });
+
         const coordSpace = new Button({
             id: 'bottom-toolbar-coord-space',
             class: 'bottom-toolbar-toggle',
@@ -135,6 +141,7 @@ class BottomToolbar extends Container {
         flood.dom.appendChild(createSvg(floodSvg));
         sphere.dom.appendChild(createSvg(sphereSvg));
         box.dom.appendChild(createSvg(boxSvg));
+        annotation.dom.appendChild(createSvg(annotationSvg));
         lasso.dom.appendChild(createSvg(lassoSvg));
         eyedropper.dom.appendChild(createSvg(eyedropperSvg));
         // crop.dom.appendChild(createSvg(cropSvg));
@@ -158,6 +165,7 @@ class BottomToolbar extends Container {
         this.append(scale);
         this.append(new Element({ class: 'bottom-toolbar-separator' }));
         this.append(measure);
+        this.append(annotation);
         this.append(coordSpace);
         this.append(origin);
 
@@ -175,6 +183,7 @@ class BottomToolbar extends Container {
         rotate.dom.addEventListener('click', () => events.fire('tool.rotate'));
         scale.dom.addEventListener('click', () => events.fire('tool.scale'));
         measure.dom.addEventListener('click', () => events.fire('tool.measure'));
+        annotation.dom.addEventListener('click', () => events.fire('tool.annotation'));
         coordSpace.dom.addEventListener('click', () => events.fire('tool.toggleCoordSpace'));
         origin.dom.addEventListener('click', () => events.fire('pivot.toggleOrigin'));
 
@@ -197,6 +206,7 @@ class BottomToolbar extends Container {
             rotate.class[toolName === 'rotate' ? 'add' : 'remove']('active');
             scale.class[toolName === 'scale' ? 'add' : 'remove']('active');
             measure.class[toolName === 'measure' ? 'add' : 'remove']('active');
+            annotation.class[toolName === 'annotation' ? 'add' : 'remove']('active');
             eyedropper.class[toolName === 'eyedropperSelection' ? 'add' : 'remove']('active');
         });
 
@@ -235,6 +245,7 @@ class BottomToolbar extends Container {
         tooltips.register(rotate, tooltip('tooltip.bottom-toolbar.rotate', 'tool.rotate'));
         tooltips.register(scale, tooltip('tooltip.bottom-toolbar.scale', 'tool.scale'));
         tooltips.register(measure, tooltip('tooltip.bottom-toolbar.measure'));
+        tooltips.register(annotation, tooltip('tooltip.bottom-toolbar.annotation'));
         tooltips.register(coordSpace, tooltip('tooltip.bottom-toolbar.local-space', 'tool.toggleCoordSpace'));
         tooltips.register(origin, tooltip('tooltip.bottom-toolbar.bound-center'));
         tooltips.register(eyedropper, tooltip('tooltip.bottom-toolbar.eyedropper', 'tool.eyedropperSelection'));

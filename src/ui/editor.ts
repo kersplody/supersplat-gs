@@ -80,13 +80,7 @@ class EditorUI {
             text: `GEOSPLAT v${version}`
         });
         const defaultAppLabel = `GEOSPLAT v${version}`;
-        const copyCalloutButton = document.createElement('button');
-        copyCalloutButton.id = 'copy-callout-button';
-        copyCalloutButton.textContent = 'COPY COORDS';
-        copyCalloutButton.hidden = true;
         let activeMeasurePoint: { x: number, y: number, z: number } | null = null;
-        const formatVec3 = (value: { x: number, y: number, z: number }, digits = 4) =>
-            `${value.x.toFixed(digits)}, ${value.y.toFixed(digits)}, ${value.z.toFixed(digits)}`;
         const toArray = (value: { x: number, y: number, z: number }, digits = 4) => [
             Number(value.x.toFixed(digits)),
             Number(value.y.toFixed(digits)),
@@ -95,7 +89,7 @@ class EditorUI {
         const darkBubbleColor = [0.08, 0.08, 0.08, 0.9];
         const whiteTextColor = [1, 1, 1, 1];
         const orangeLineColor = [1, 0.4, 0, 1];
-        const orangeBoxColor = [1, 0.4, 0, 0.3];
+        const orangeBoxColor = [1, 0.4, 0, 0.15];
         const midpoint = (a: Vec3, b: Vec3) => new Vec3().add2(a, b).mulScalar(0.5);
         const centroid = (points: Vec3[]) => {
             const result = new Vec3();
@@ -108,7 +102,10 @@ class EditorUI {
                 return [];
             }
 
-            return splat.measurePoints.map((point) => {
+            const activeTool = events.invoke('tool.active');
+            const points = activeTool === 'annotation' ? splat.annotationPoints : splat.measurePoints;
+
+            return points.map((point) => {
                 const worldPoint = new Vec3();
                 splat.worldTransform.transformPoint(point, worldPoint);
                 return worldPoint;
@@ -132,7 +129,13 @@ class EditorUI {
                     }
                 }
             };
-            let payload: Record<string, any> = {
+            const activeTool = events.invoke('tool.active');
+            const draft = events.invoke('annotation.draft') as Record<string, any> | undefined;
+            let payload: Record<string, any> = activeTool === 'annotation' ? {
+                ...camera,
+                ...draft,
+                extras: draft?.extras ?? {}
+            } : {
                 ...camera,
                 position: activeMeasurePoint ? toArray(activeMeasurePoint) : null,
                 title: '',
@@ -153,31 +156,24 @@ class EditorUI {
                     ...payload,
                     kind: 'line',
                     position: toArray(midpoint(measurePoints[0], measurePoints[1])),
-                    points: [toArray(measurePoints[0]), toArray(measurePoints[1])],
-                    lineColor: orangeLineColor,
-                    lineThickness: 2,
-                    showMeasurement: true,
-                    measurementUnits: 'm'
+                    points: [toArray(measurePoints[0]), toArray(measurePoints[1])]
                 };
             } else if (measurePoints.length >= 3) {
                 payload = {
                     ...payload,
                     kind: 'box',
                     position: toArray(centroid(measurePoints.slice(0, 3))),
-                    points: [toArray(measurePoints[0]), toArray(measurePoints[1]), toArray(measurePoints[2])],
-                    boxColor: orangeBoxColor,
-                    showMeasurement: true,
-                    measurementUnits: 'm'
+                    points: [toArray(measurePoints[0]), toArray(measurePoints[1]), toArray(measurePoints[2])]
                 };
             }
 
             await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
         };
         const renderMeasurementLabel = () => {
-            const measureMode = events.invoke('tool.active') === 'measure';
+            const activeTool = events.invoke('tool.active');
+            const measureMode = activeTool === 'measure';
             const settingsLoaded = !!events.invoke('settings.raw');
             const settingsStatus = `SETTINGS: ${settingsLoaded ? 'LOADED' : 'NOT LOADED'}`;
-            copyCalloutButton.hidden = !measureMode;
 
             if (!measureMode) {
                 appLabel.text = `${defaultAppLabel}\n${settingsStatus}`;
@@ -226,25 +222,14 @@ class EditorUI {
             }, 1000);
         });
 
-        ['pointerdown', 'pointerup', 'pointermove', 'wheel', 'dblclick'].forEach((eventName) => {
-            copyCalloutButton.addEventListener(eventName, (event: Event) => event.stopPropagation());
-        });
-
-        copyCalloutButton.addEventListener('click', async () => {
+        events.on('annotation.copy', async () => {
             await copyCalloutData();
-
-            const original = copyCalloutButton.textContent;
-            copyCalloutButton.textContent = 'Copied';
-            setTimeout(() => {
-                copyCalloutButton.textContent = original;
-            }, 1000);
         });
 
         // canvas container
         const canvasContainer = new Container({
             id: 'canvas-container'
         });
-        canvasContainer.dom.appendChild(copyCalloutButton);
 
         // tools container
         const toolsContainer = new Container({

@@ -81,3 +81,8 @@
         color: $clr-hilight;
     }
 }
+
+#bottom-toolbar-annotation svg {
+    transform: scale(0.5);
+    transform-origin: center;
+}

@@ -18,6 +18,7 @@ import { ShortcutManager } from './shortcut-manager';
 import { registerTimelineEvents } from './timeline';
 import { BoxSelection } from './tools/box-selection';
 import { BrushSelection } from './tools/brush-selection';
+import { CalloutTool } from './tools/callout-tool';
 import { EyedropperSelection } from './tools/eyedropper-selection';
 import { FloodSelection } from './tools/flood-selection';
 import { LassoSelection } from './tools/lasso-selection';
@@ -230,6 +231,7 @@ const main = async () => {
     toolManager.register('rotate', new RotateTool(events, scene));
     toolManager.register('scale', new ScaleTool(events, scene));
     toolManager.register('measure', new MeasureTool(events, scene, editorUI.toolsContainer.dom, editorUI.canvasContainer));
+    toolManager.register('annotation', new CalloutTool(events, scene, editorUI.toolsContainer.dom, editorUI.canvasContainer));
 
     editorUI.toolsContainer.dom.appendChild(maskCanvas);
 

@@ -9,6 +9,7 @@
 @use 'color-panel.scss';
 @use 'splat-list.scss';
 @use 'transform.scss';
+@use 'callout.scss';
 @use 'bottom-toolbar.scss';
 @use 'right-toolbar.scss';
 @use 'select-toolbar.scss';
@@ -107,24 +108,6 @@ body {
     text-align: right;
 }
 
-#copy-callout-button {
-    position: absolute;
-    right: 20px;
-    bottom: 56px;
-    color: $text-primary;
-    background-color: rgba(0, 0, 0, 0.45);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
-    padding: 4px 8px;
-    cursor: pointer;
-    pointer-events: auto;
-
-    &:hover {
-        border-color: $clr-hilight;
-        background-color: rgba(0, 0, 0, 0.65);
-    }
-}
-
 #cursor-label {
     position: absolute;
     left: 12px;
@@ -142,6 +125,18 @@ body {
         border: 1px solid $clr-hilight;
         background-color: rgba(0, 0, 0, 0.25);
     }
+}
+
+.annotation-preview-measure {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    color: white;
+    background-color: rgba(0, 0, 0, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    padding: 2px 6px;
+    pointer-events: none;
+    white-space: nowrap;
 }
 
 #view-cube-container {
@@ -173,6 +168,7 @@ body {
     position: absolute;
     width: 100%;
     height: 100%;
+    z-index: 3;
     cursor: crosshair;
     &.noevents {
         pointer-events: none;

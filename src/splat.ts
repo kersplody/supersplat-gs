@@ -70,6 +70,9 @@ class Splat extends Element {
 
     measurePoints: Vec3[] = [];
     measureSelection = -1;
+    annotationLabelPosition: Vec3 | null = null;
+    annotationPoints: Vec3[] = [];
+    annotationSelection = -1;
 
     rebuildMaterial: (bands: number) => void;
 

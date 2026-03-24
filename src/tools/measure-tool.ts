@@ -32,51 +32,46 @@ class MeasureTool {
     deactivate: () => void;
 
     constructor(events: Events, scene: Scene, parent: HTMLElement, canvasContainer: Container) {
-        // create svg
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.classList.add('tool-svg', 'hidden');
+        svg.classList.add('tool-svg', 'hidden', 'measure-tool-svg');
         svg.id = 'measure-tool-svg';
         parent.appendChild(svg);
 
         const ns = svg.namespaceURI;
-
-        // create defs node
         const defs = document.createElementNS(ns, 'defs');
 
-        // create line element
         const line = document.createElementNS(ns, 'line') as SVGLineElement;
         line.id = 'measure-line';
         defs.appendChild(line);
 
         const lineBottom = document.createElementNS(ns, 'use') as SVGUseElement;
-        lineBottom.id = 'measure-line-bottom';
-        lineBottom.setAttribute('href', '#measure-line');
+        lineBottom.classList.add('measure-line-bottom');
+        lineBottom.setAttribute('href', `#${line.id}`);
 
         const lineTop = document.createElementNS(ns, 'use') as SVGUseElement;
-        lineTop.id = 'measure-line-top';
-        lineTop.setAttribute('href', '#measure-line');
+        lineTop.classList.add('measure-line-top');
+        lineTop.setAttribute('href', `#${line.id}`);
 
         const line2 = document.createElementNS(ns, 'line') as SVGLineElement;
         line2.id = 'measure-line-2';
         defs.appendChild(line2);
 
         const line2Bottom = document.createElementNS(ns, 'use') as SVGUseElement;
-        line2Bottom.id = 'measure-line-2-bottom';
-        line2Bottom.setAttribute('href', '#measure-line-2');
+        line2Bottom.classList.add('measure-line-bottom');
+        line2Bottom.setAttribute('href', `#${line2.id}`);
 
         const line2Top = document.createElementNS(ns, 'use') as SVGUseElement;
-        line2Top.id = 'measure-line-2-top';
-        line2Top.setAttribute('href', '#measure-line-2');
+        line2Top.classList.add('measure-line-top');
+        line2Top.setAttribute('href', `#${line2.id}`);
 
-        // create line ends
         const lineStart = document.createElementNS(ns, 'circle') as SVGCircleElement;
-        lineStart.id = 'measure-line-start';
+        lineStart.classList.add('measure-line-point');
 
         const lineMid = document.createElementNS(ns, 'circle') as SVGCircleElement;
-        lineMid.id = 'measure-line-mid';
+        lineMid.classList.add('measure-line-point');
 
         const lineEnd = document.createElementNS(ns, 'circle') as SVGCircleElement;
-        lineEnd.id = 'measure-line-end';
+        lineEnd.classList.add('measure-line-point');
 
         svg.appendChild(defs);
         svg.appendChild(lineBottom);
@@ -87,7 +82,6 @@ class MeasureTool {
         svg.appendChild(lineMid);
         svg.appendChild(lineEnd);
 
-        // ui
         const lengthLabel = new Label({
             text: localize('measure.length')
         });
@@ -110,10 +104,12 @@ class MeasureTool {
                 { v: 'in', t: 'in' }
             ]
         });
+
         const clearButton = new Button({
             class: 'select-toolbar-button',
             text: 'Clear'
         });
+
         let suppressUI = 0;
 
         const selectToolbar = new Container({
@@ -121,10 +117,7 @@ class MeasureTool {
             hidden: true
         });
 
-        selectToolbar.dom.addEventListener('pointerdown', (e) => {
-            e.stopPropagation();
-        });
-
+        selectToolbar.dom.addEventListener('pointerdown', (e) => e.stopPropagation());
         selectToolbar.append(lengthLabel);
         selectToolbar.append(lengthInput);
         selectToolbar.append(lengthUnit);
@@ -156,37 +149,16 @@ class MeasureTool {
         };
 
         const units = {
-            m: {
-                toDisplay: (meters: number) => meters,
-                toMeters: (value: number) => value,
-                suffix: 'm',
-                convertedLabel: (meters: number) => `${formatLength(meters * 3.280839895)} ft`
-            },
-            cm: {
-                toDisplay: (meters: number) => meters * 100,
-                toMeters: (value: number) => value / 100,
-                suffix: 'cm',
-                convertedLabel: (meters: number) => `${formatLength(meters)} m`
-            },
-            ft: {
-                toDisplay: (meters: number) => meters * 3.280839895,
-                toMeters: (value: number) => value / 3.280839895,
-                suffix: 'ft',
-                convertedLabel: (meters: number) => `${formatLength(meters)} m`
-            },
-            in: {
-                toDisplay: (meters: number) => meters * 39.37007874,
-                toMeters: (value: number) => value / 39.37007874,
-                suffix: 'in',
-                convertedLabel: (meters: number) => `${formatLength(meters)} m`
-            }
+            m: { toDisplay: (meters: number) => meters, toMeters: (value: number) => value, suffix: 'm' },
+            cm: { toDisplay: (meters: number) => meters * 100, toMeters: (value: number) => value / 100, suffix: 'cm' },
+            ft: { toDisplay: (meters: number) => meters * 3.280839895, toMeters: (value: number) => value / 3.280839895, suffix: 'ft' },
+            in: { toDisplay: (meters: number) => meters * 39.37007874, toMeters: (value: number) => value / 39.37007874, suffix: 'in' }
         } as const;
 
         const getCurrentUnit = () => {
             return units[lengthUnit.value as keyof typeof units] ? lengthUnit.value as keyof typeof units : 'm';
         };
 
-        // get world space point
         const getPoint = (index: number, result: Vec3) => {
             splat.worldTransform.transformPoint(splat.measurePoints[index], result);
         };
@@ -201,11 +173,7 @@ class MeasureTool {
         const publishActivePoint = () => {
             if (splat && active && splat.measureSelection >= 0 && splat.measureSelection < splat.measurePoints.length) {
                 getPoint(splat.measureSelection, p);
-                events.fire('measure.activePoint', {
-                    x: p.x,
-                    y: p.y,
-                    z: p.z
-                });
+                events.fire('measure.activePoint', { x: p.x, y: p.y, z: p.z });
             } else {
                 events.fire('measure.activePoint', null);
             }
@@ -237,14 +205,10 @@ class MeasureTool {
             const candidates: { x: number, y: number, z: number, depth: number }[] = [];
 
             for (let i = 0; i < targetSplat.splatData.numSplats; i++) {
-                if ((state[i] & State.deleted) !== 0) {
-                    continue;
-                }
+                if ((state[i] & State.deleted) !== 0) continue;
 
                 p2.set(positions[i * 4], positions[i * 4 + 1], positions[i * 4 + 2]);
-                if (!Number.isFinite(p2.x) || !Number.isFinite(p2.y) || !Number.isFinite(p2.z)) {
-                    continue;
-                }
+                if (!Number.isFinite(p2.x) || !Number.isFinite(p2.y) || !Number.isFinite(p2.z)) continue;
 
                 scene.camera.worldToScreen(p2, p);
                 p.x *= canvasContainer.dom.clientWidth;
@@ -257,19 +221,12 @@ class MeasureTool {
                     p.sub2(p2, cameraPosition);
                     const depth = p.dot(cameraForward);
                     if (depth > 0) {
-                        candidates.push({
-                            x: p2.x,
-                            y: p2.y,
-                            z: p2.z,
-                            depth
-                        });
+                        candidates.push({ x: p2.x, y: p2.y, z: p2.z, depth });
                     }
                 }
             }
 
-            if (candidates.length === 0) {
-                return fallback;
-            }
+            if (candidates.length === 0) return fallback;
 
             const buckets = new Map<number, { count: number, xSum: number, ySum: number, zSum: number, depthSum: number }>();
             let bestBucket: { count: number, xSum: number, ySum: number, zSum: number, depthSum: number } | null = null;
@@ -284,16 +241,16 @@ class MeasureTool {
                 bucket.depthSum += candidate.depth;
                 buckets.set(key, bucket);
 
-                const bucketDepth = bucket.depthSum / bucket.count;
-                const bestDepth = bestBucket ? bestBucket.depthSum / bestBucket.count : Infinity;
-                if (!bestBucket || bucket.count > bestBucket.count || (bucket.count === bestBucket.count && bucketDepth < bestDepth)) {
+                const bucketY = bucket.ySum / bucket.count;
+                const bestY = bestBucket ? bestBucket.ySum / bestBucket.count : Infinity;
+                const bucketYDelta = Math.abs(bucketY - fallback.y);
+                const bestYDelta = Math.abs(bestY - fallback.y);
+                if (!bestBucket || bucket.count > bestBucket.count || (bucket.count === bestBucket.count && bucketYDelta < bestYDelta)) {
                     bestBucket = bucket;
                 }
             }
 
-            if (!bestBucket) {
-                return fallback;
-            }
+            if (!bestBucket) return fallback;
 
             const anchorX = bestBucket.xSum / bestBucket.count;
             const anchorY = bestBucket.ySum / bestBucket.count;
@@ -305,42 +262,41 @@ class MeasureTool {
             });
 
             if (nearby.length > 0) {
-                const refinedBuckets = new Map<number, { count: number, zSum: number, depthSum: number }>();
-                let refinedBest: { count: number, zSum: number, depthSum: number } | null = null;
+                const refinedBuckets = new Map<number, { count: number, ySum: number, zSum: number, depthSum: number }>();
+                let refinedBest: { count: number, ySum: number, zSum: number, depthSum: number } | null = null;
 
                 for (const candidate of nearby) {
                     const key = Math.round(candidate.depth / zBinSize);
-                    const bucket = refinedBuckets.get(key) ?? { count: 0, zSum: 0, depthSum: 0 };
+                    const bucket = refinedBuckets.get(key) ?? { count: 0, ySum: 0, zSum: 0, depthSum: 0 };
                     bucket.count++;
+                    bucket.ySum += candidate.y;
                     bucket.zSum += candidate.z;
                     bucket.depthSum += candidate.depth;
                     refinedBuckets.set(key, bucket);
 
-                    const bucketDepth = bucket.depthSum / bucket.count;
-                    const bestDepth = refinedBest ? refinedBest.depthSum / refinedBest.count : Infinity;
-                    if (!refinedBest || bucket.count > refinedBest.count || (bucket.count === refinedBest.count && bucketDepth < bestDepth)) {
+                    const bucketY = bucket.ySum / bucket.count;
+                    const bestY = refinedBest ? refinedBest.ySum / refinedBest.count : Infinity;
+                    const bucketYDelta = Math.abs(bucketY - fallback.y);
+                    const bestYDelta = Math.abs(bestY - fallback.y);
+                    if (!refinedBest || bucket.count > refinedBest.count || (bucket.count === refinedBest.count && bucketYDelta < bestYDelta)) {
                         refinedBest = bucket;
                     }
                 }
 
                 if (refinedBest) {
                     const snappedZ = refinedBest.zSum / refinedBest.count;
-                    if (!clampToFallback) {
-                        return new Vec3(anchorX, anchorY, snappedZ);
-                    }
-
-                    const snapOffset = Math.abs(fallback.z - snappedZ);
+                    if (!clampToFallback) return new Vec3(anchorX, anchorY, snappedZ);
+                    const snappedY = refinedBest.ySum / refinedBest.count;
+                    const snapOffset = Math.abs(fallback.y - snappedY);
                     if (refinedBest.count >= minClusterCount && snapOffset <= maxSnapOffset) {
                         return new Vec3(anchorX, anchorY, snappedZ);
                     }
                 }
             }
 
-            if (!clampToFallback) {
-                return new Vec3(anchorX, anchorY, anchorZ);
-            }
+            if (!clampToFallback) return new Vec3(anchorX, anchorY, anchorZ);
 
-            const snapOffset = Math.abs(fallback.z - anchorZ);
+            const snapOffset = Math.abs(fallback.y - anchorY);
             if (bestBucket.count >= minClusterCount && snapOffset <= maxSnapOffset) {
                 return new Vec3(anchorX, anchorY, anchorZ);
             }
@@ -369,10 +325,8 @@ class MeasureTool {
                 }
                 lenMeters *= getMeasureScale();
                 const unit = getCurrentUnit();
-                const len = units[unit].toDisplay(lenMeters);
-
                 suppressUI++;
-                lengthInput.value = len;
+                lengthInput.value = units[unit].toDisplay(lenMeters);
                 lengthInput.placeholder = '';
                 lengthInput.enabled = true;
                 suppressUI--;
@@ -409,20 +363,15 @@ class MeasureTool {
         events.on('selection.changed', (selection: Splat) => {
             splat = selection;
             if (active) {
-                // for now we always deactivate the tool so the current transform handler remains in place
                 events.fire('tool.deactivate');
             }
         });
 
-        events.on('pivot.started', () => {
-
-        });
-
         events.on('pivot.moved', () => {
             if (active && splat && splat.measureSelection >= 0 && splat.measureSelection < splat.measurePoints.length) {
-                const p = events.invoke('pivot').transform.position;
+                const pivotPosition = events.invoke('pivot').transform.position;
                 mat.invert(splat.worldTransform);
-                mat.transformPoint(p, splat.measurePoints[splat.measureSelection]);
+                mat.transformPoint(pivotPosition, splat.measurePoints[splat.measureSelection]);
                 publishActivePoint();
             }
             scene.forceRender = true;
@@ -441,13 +390,8 @@ class MeasureTool {
                         try {
                             const screenX = p2.x * canvasContainer.dom.clientWidth;
                             const screenY = p2.y * canvasContainer.dom.clientHeight;
-                            const result = await scene.camera.intersect(
-                                screenX / canvasContainer.dom.clientWidth,
-                                screenY / canvasContainer.dom.clientHeight
-                            );
-                            const snapped = result ?
-                                await snapCreatedPoint(result.splat, screenX, screenY, result.position) :
-                                draggedPoint;
+                            const result = await scene.camera.intersect(screenX / canvasContainer.dom.clientWidth, screenY / canvasContainer.dom.clientHeight);
+                            const snapped = result ? await snapCreatedPoint(result.splat, screenX, screenY, result.position) : draggedPoint;
                             if (draggedIndex < targetSplat.measurePoints.length) {
                                 mat.invert(targetSplat.worldTransform);
                                 mat.transformPoint(snapped, p2);
@@ -458,7 +402,6 @@ class MeasureTool {
                                 scene.forceRender = true;
                             }
                         } catch {
-                            // keep dragged position if snap fails
                         }
                     }
 
@@ -478,9 +421,7 @@ class MeasureTool {
         let startLen = 0;
 
         const startScale = () => {
-            if (!splat || splat.measurePoints.length < 2) {
-                return;
-            }
+            if (!splat || splat.measurePoints.length < 2) return;
 
             origTransform.copy(splat.worldTransform);
             origP.copy(splat.entity.getLocalPosition());
@@ -500,21 +441,15 @@ class MeasureTool {
             }
         };
 
-        // position and scale the splat according to the new length
         const applyLength = (newLength: number) => {
-            if (!splat || splat.measurePoints.length < 2 || newLength <= 0) {
-                return;
-            }
+            if (!splat || splat.measurePoints.length < 2 || newLength <= 0) return;
 
             const measureScale = getMeasureScale();
             const unit = getCurrentUnit();
             const rawLength = units[unit].toMeters(newLength) / measureScale;
             const scale = rawLength / startLen;
 
-            // calculate mid point
             p.copy(mid);
-
-            // construct a transform matrix that scales from p by len * 0.5
             mat1.setTranslate(-p.x, -p.y, -p.z);
             mat2.setScale(scale, scale, scale);
             mat3.setTranslate(p.x, p.y, p.z);
@@ -530,13 +465,12 @@ class MeasureTool {
             splat.entity.setLocalPosition(p);
             splat.entity.setLocalRotation(r);
             splat.entity.setLocalScale(s);
-
             scene.forceRender = true;
         };
 
         const endScale = () => {
             const top = new EntityTransformOp({
-                splat: splat,
+                splat,
                 oldt: new Transform(origP, origR, origS),
                 newt: new Transform(splat.entity.getLocalPosition(), splat.entity.getLocalRotation(), splat.entity.getLocalScale())
             });
@@ -547,7 +481,6 @@ class MeasureTool {
 
         let dragging = false;
 
-        // handle length input updates
         lengthInput.on('slider:mousedown', () => {
             startScale();
             dragging = true;
@@ -565,10 +498,7 @@ class MeasureTool {
             endScale();
             dragging = false;
         });
-
-        lengthUnit.on('change', () => {
-            updateVisuals();
-        });
+        lengthUnit.on('change', () => updateVisuals());
 
         clearButton.on('click', () => {
             if (splat) {
@@ -586,154 +516,118 @@ class MeasureTool {
             }
         });
 
-        const isPrimary = (e: PointerEvent) => {
-            return e.pointerType === 'mouse' ? e.button === 0 : e.isPrimary;
-        };
-
+        const isPrimary = (e: PointerEvent) => (e.pointerType === 'mouse' ? e.button === 0 : e.isPrimary);
         let clicked = false;
 
         const pointerdown = (e: PointerEvent) => {
-            if (!clicked && isPrimary(e)) {
-                clicked = true;
-            }
+            if (!clicked && isPrimary(e)) clicked = true;
         };
 
-        const pointermove = (e: PointerEvent) => {
+        const pointermove = () => {
             clicked = false;
         };
 
         const pointerup = async (e: PointerEvent) => {
-            if (splat && clicked && isPrimary(e)) {
-                clicked = false;
+            if (!(splat && clicked && isPrimary(e))) return;
+            clicked = false;
 
-                let closestIdx = -1;
-
-                // check for intersection with existing point
-                for (let i = 0; i < splat.measurePoints.length; i++) {
-                    getPoint2d(i, p);
-
-                    if (Math.abs(p.x - e.offsetX) < 8 && Math.abs(p.y - e.offsetY) < 8) {
-                        closestIdx = i;
-                        break;
-                    }
+            let closestIdx = -1;
+            for (let i = 0; i < splat.measurePoints.length; i++) {
+                getPoint2d(i, p);
+                if (Math.abs(p.x - e.offsetX) < 8 && Math.abs(p.y - e.offsetY) < 8) {
+                    closestIdx = i;
+                    break;
                 }
-
-                if (closestIdx >= 0) {
-                    splat.measureSelection = closestIdx;
-                    updateVisuals();
-                    return;
-                }
-
-                if (splat.measurePoints.length < 3) {
-                    const result = await scene.camera.intersect(e.offsetX / canvasContainer.dom.clientWidth, e.offsetY / canvasContainer.dom.clientHeight);
-                    if (result) {
-                        mat.invert(splat.worldTransform);
-                        mat.transformPoint(result.position, p);
-                        splat.measureSelection = splat.measurePoints.length;
-                        splat.measurePoints.push(p.clone());
-                        updateVisuals();
-
-                        if (useCreationSnap() && !e.ctrlKey) {
-                            const insertedIndex = splat.measureSelection;
-                            const targetSplat = splat;
-                            void (async () => {
-                                try {
-                                    const snapped = await snapCreatedPoint(result.splat, e.offsetX, e.offsetY, result.position);
-                                    if (!active || splat !== targetSplat || targetSplat.measureSelection !== insertedIndex || insertedIndex >= targetSplat.measurePoints.length) {
-                                        return;
-                                    }
-
-                                    mat.invert(targetSplat.worldTransform);
-                                    mat.transformPoint(snapped, targetSplat.measurePoints[insertedIndex]);
-                                    updateVisuals();
-                                } catch {
-                                    // keep the initially created point if snapping fails
-                                }
-                            })();
-                        }
-                    }
-                }
-
-                e.preventDefault();
-                e.stopPropagation();
             }
+
+            if (closestIdx >= 0) {
+                splat.measureSelection = closestIdx;
+                updateVisuals();
+                return;
+            }
+
+            if (splat.measurePoints.length < 3) {
+                const result = await scene.camera.intersect(e.offsetX / canvasContainer.dom.clientWidth, e.offsetY / canvasContainer.dom.clientHeight);
+                if (result) {
+                    mat.invert(splat.worldTransform);
+                    mat.transformPoint(result.position, p);
+                    splat.measureSelection = splat.measurePoints.length;
+                    splat.measurePoints.push(p.clone());
+                    updateVisuals();
+
+                    if (useCreationSnap() && !e.ctrlKey) {
+                        const insertedIndex = splat.measureSelection;
+                        const targetSplat = splat;
+                        void (async () => {
+                            try {
+                                const snapped = await snapCreatedPoint(result.splat, e.offsetX, e.offsetY, result.position);
+                                if (!active || splat !== targetSplat || targetSplat.measureSelection !== insertedIndex || insertedIndex >= targetSplat.measurePoints.length) {
+                                    return;
+                                }
+                                mat.invert(targetSplat.worldTransform);
+                                mat.transformPoint(snapped, targetSplat.measurePoints[insertedIndex]);
+                                updateVisuals();
+                            } catch {
+                            }
+                        })();
+                    }
+                }
+            }
+
+            e.preventDefault();
+            e.stopPropagation();
         };
 
         events.on('postrender', () => {
-            if (active && splat) {
-                line.setAttribute('visibility', splat.measurePoints.length > 1 ? 'visible' : 'hidden');
-                line2.setAttribute('visibility', splat.measurePoints.length > 2 ? 'visible' : 'hidden');
+            line.setAttribute('visibility', splat && splat.measurePoints.length > 1 && active ? 'visible' : 'hidden');
+            line2.setAttribute('visibility', splat && splat.measurePoints.length > 2 && active ? 'visible' : 'hidden');
+            lineStart.setAttribute('visibility', 'hidden');
+            lineMid.setAttribute('visibility', 'hidden');
+            lineEnd.setAttribute('visibility', 'hidden');
 
-                for (let i = 0; i < 3; i++) {
-                    if (i < splat.measurePoints.length) {
-                        getPoint2d(i, p);
+            if (!(active && splat)) return;
 
-                        const x = p.x.toString();
-                        const y = p.y.toString();
+            for (let i = 0; i < 3; i++) {
+                if (i < splat.measurePoints.length) {
+                    getPoint2d(i, p);
+                    const x = p.x.toString();
+                    const y = p.y.toString();
 
-                        if (i === 0) {
-                            line.setAttribute('x1', x);
-                            line.setAttribute('y1', y);
-                            lineStart.setAttribute('cx', x);
-                            lineStart.setAttribute('cy', y);
-
-                            lineStart.setAttribute('visibility', 'visible');
-                        } else if (i === 1) {
-                            line.setAttribute('x2', x);
-                            line.setAttribute('y2', y);
-                            line2.setAttribute('x1', x);
-                            line2.setAttribute('y1', y);
-                            lineMid.setAttribute('cx', x);
-                            lineMid.setAttribute('cy', y);
-                            lineMid.setAttribute('visibility', 'visible');
-                        } else if (i === 2) {
-                            line2.setAttribute('x2', x);
-                            line2.setAttribute('y2', y);
-                            lineEnd.setAttribute('cx', x);
-                            lineEnd.setAttribute('cy', y);
-                            lineEnd.setAttribute('visibility', 'visible');
-                        }
-                    } else {
-                        if (i === 0) {
-                            lineStart.setAttribute('visibility', 'hidden');
-                        } else if (i === 1) {
-                            lineMid.setAttribute('visibility', 'hidden');
-                        } else {
-                            lineEnd.setAttribute('visibility', 'hidden');
-                        }
+                    if (i === 0) {
+                        line.setAttribute('x1', x);
+                        line.setAttribute('y1', y);
+                        lineStart.setAttribute('cx', x);
+                        lineStart.setAttribute('cy', y);
+                        lineStart.setAttribute('visibility', 'visible');
+                    } else if (i === 1) {
+                        line.setAttribute('x2', x);
+                        line.setAttribute('y2', y);
+                        line2.setAttribute('x1', x);
+                        line2.setAttribute('y1', y);
+                        lineMid.setAttribute('cx', x);
+                        lineMid.setAttribute('cy', y);
+                        lineMid.setAttribute('visibility', 'visible');
+                    } else if (i === 2) {
+                        line2.setAttribute('x2', x);
+                        line2.setAttribute('y2', y);
+                        lineEnd.setAttribute('cx', x);
+                        lineEnd.setAttribute('cy', y);
+                        lineEnd.setAttribute('visibility', 'visible');
                     }
                 }
-            } else {
-                line.setAttribute('visibility', 'hidden');
-                line2.setAttribute('visibility', 'hidden');
-                lineStart.setAttribute('visibility', 'hidden');
-                lineMid.setAttribute('visibility', 'hidden');
-                lineEnd.setAttribute('visibility', 'hidden');
             }
         });
 
         const updateGizmoSize = () => {
             const { camera, canvas } = scene;
-            if (camera.ortho) {
-                gizmo.size = 1125 / canvas.clientHeight;
-            } else {
-                gizmo.size = 1200 / Math.max(canvas.clientWidth, canvas.clientHeight);
-            }
+            gizmo.size = camera.ortho ? 1125 / canvas.clientHeight : 1200 / Math.max(canvas.clientWidth, canvas.clientHeight);
         };
         updateGizmoSize();
         events.on('camera.resize', updateGizmoSize);
         events.on('camera.ortho', updateGizmoSize);
-        events.on('view.measureScale', () => {
-            if (active) {
-                updateVisuals();
-            }
-        });
-        events.on('splat.stateChanged', (changedSplat: Splat) => {
-            positionsCache.delete(changedSplat);
-        });
-        events.on('splat.positionsChanged', (changedSplat: Splat) => {
-            positionsCache.delete(changedSplat);
-        });
+        events.on('view.measureScale', () => active && updateVisuals());
+        events.on('splat.stateChanged', (changedSplat: Splat) => positionsCache.delete(changedSplat));
+        events.on('splat.positionsChanged', (changedSplat: Splat) => positionsCache.delete(changedSplat));
 
         this.activate = () => {
             active = true;
@@ -747,7 +641,6 @@ class MeasureTool {
             parent.style.display = 'block';
             parent.classList.add('noevents');
             svg.classList.remove('hidden');
-
             events.fire('transformHandler.push', transformHandler);
         };
 
@@ -765,7 +658,6 @@ class MeasureTool {
             parent.style.display = 'none';
             parent.classList.remove('noevents');
             svg.classList.add('hidden');
-
             events.fire('transformHandler.pop');
         };
     }

@@ -3,10 +3,12 @@ import { Container, Element, Label } from '@playcanvas/pcui';
 import { Events } from '../events';
 import { localize } from './localization';
 import { SplatList } from './splat-list';
+import annotationSvg from './svg/annotation.svg';
 import sceneImportSvg from './svg/import.svg';
 import sceneNewSvg from './svg/new.svg';
 import soloSvg from './svg/solo.svg';
 import { Tooltips } from './tooltips';
+import { Callout } from './callout';
 import { Transform } from './transform';
 
 const createSvg = (svgString: string) => {
@@ -112,14 +114,51 @@ class ScenePanel extends Container {
         transformHeader.append(transformIcon);
         transformHeader.append(transformLabel);
 
+        const calloutSection = new Container({
+            class: 'panel-section',
+            hidden: true
+        });
+
+        const calloutHeader = new Container({
+            class: 'panel-header'
+        });
+
+        const calloutIcon = new Container({
+            class: ['panel-header-icon', 'panel-header-icon-svg']
+        });
+        calloutIcon.dom.appendChild(createSvg(annotationSvg));
+
+        const calloutLabel = new Label({
+            text: localize('panel.scene-manager.callout'),
+            class: 'panel-header-label'
+        });
+
+        calloutHeader.append(calloutIcon);
+        calloutHeader.append(calloutLabel);
+
         this.append(sceneHeader);
         this.append(splatListContainer);
+        const calloutPanel = new Callout(events);
+        calloutSection.append(calloutHeader);
+        calloutSection.append(calloutPanel);
+
         this.append(transformHeader);
         this.append(new Transform(events));
+        this.append(calloutSection);
         this.append(new Element({
             class: 'panel-header',
             height: 20
         }));
+
+        events.on('tool.activated', (toolName: string) => {
+            calloutSection.hidden = toolName !== 'annotation';
+        });
+
+        events.on('tool.deactivated', () => {
+            if (events.invoke('tool.active') !== 'annotation') {
+                calloutSection.hidden = true;
+            }
+        });
     }
 }
 

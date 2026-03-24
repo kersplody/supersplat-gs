@@ -7,7 +7,8 @@
 
     background-color: $bcg-primary;
 
-    & > .panel-header {
+    & > .panel-header,
+    .panel-section > .panel-header {
         display: flex;
         flex-direction: row;
         align-items: center;
@@ -20,6 +21,21 @@
             font-weight: bold;
             font-size: 13px;
             color: $clr-hilight;
+
+            &.panel-header-icon-svg {
+                font-family: inherit;
+                width: 18px;
+                height: 18px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+
+                svg {
+                    width: 16px;
+                    height: 16px;
+                    color: $clr-hilight;
+                }
+            }
         }
 
         & > .panel-header-label {

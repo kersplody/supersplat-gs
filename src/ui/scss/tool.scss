@@ -45,18 +45,18 @@
         }
     }
 
-    &#measure-tool-svg {
-        >#measure-line-bottom, >#measure-line-2-bottom {
+    &.measure-tool-svg {
+        >.measure-line-bottom {
             stroke: black;
             stroke-width: 6;
         }
 
-        >#measure-line-top, >#measure-line-2-top {
+        >.measure-line-top {
             stroke: white;
             stroke-width: 2;
         }
 
-        >#measure-line-start, >#measure-line-mid, >#measure-line-end {
+        >.measure-line-point {
             fill: white;
             stroke: black;
             stroke-width: 2;

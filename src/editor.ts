@@ -14,6 +14,34 @@ const removeExtension = (filename: string) => {
     return filename.substring(0, filename.length - path.getExtension(filename).length);
 };
 
+type AnnotationDraft = {
+    position: [number, number, number],
+    title: string,
+    text: string,
+    textColor: [number, number, number, number],
+    msgBoxColor: [number, number, number, number],
+    lineColor: [number, number, number, number],
+    lineDecorator: 'none' | 'box' | 'arrowheads',
+    lineThickness: number,
+    boxColor: [number, number, number, number],
+    showMeasurement: boolean,
+    measurementUnits: 'm' | 'ft' | 'in' | 'cm'
+};
+
+const defaultAnnotationDraft = (): AnnotationDraft => ({
+    position: [0, 0, 0],
+    title: '',
+    text: '',
+    textColor: [1, 1, 1, 1],
+    msgBoxColor: [0.08, 0.08, 0.08, 0.9],
+    lineColor: [1, 0.4, 0, 1],
+    lineDecorator: 'none',
+    lineThickness: 2,
+    boxColor: [1, 0.4, 0, 0.15],
+    showMeasurement: true,
+    measurementUnits: 'm'
+});
+
 // register for editor and scene events
 const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: Scene) => {
     const vec = new Vec3();
@@ -34,6 +62,7 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
 
     let lastExportCursor = 0;
     let measureScale = 1;
+    let annotationDraft = defaultAnnotationDraft();
     let preservedSettingsRaw: Record<string, any> | undefined;
     let preservedSettingsExtensions: {
         sceneRotation?: { x: number, y: number, z: number },
@@ -147,6 +176,23 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
 
     events.on('view.setMeasureScale', (value: number) => {
         setMeasureScale(value);
+    });
+
+    events.function('annotation.draft', () => {
+        return structuredClone(annotationDraft);
+    });
+
+    events.on('annotation.setDraft', (value: Partial<AnnotationDraft>) => {
+        annotationDraft = {
+            ...annotationDraft,
+            ...value
+        };
+        events.fire('annotation.draftChanged', structuredClone(annotationDraft));
+    });
+
+    events.on('annotation.resetDraft', () => {
+        annotationDraft = defaultAnnotationDraft();
+        events.fire('annotation.draftChanged', structuredClone(annotationDraft));
     });
 
     events.function('settings.raw', () => {
@@ -538,8 +584,8 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
     });
 
     events.on('select.delete', () => {
-        // Don't delete gaussians when measure tool is active (backspace deletes measure points instead)
-        if (events.invoke('tool.active') === 'measure') {
+        // Don't delete gaussians when measure-like tools are active (backspace deletes placed points instead)
+        if (['measure', 'annotation'].includes(events.invoke('tool.active'))) {
             return;
         }
         selectedSplats().forEach((splat) => {

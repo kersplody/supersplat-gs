@@ -1,0 +1,52 @@
+@use 'colors.scss' as *;
+
+#callout {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px;
+    background-color: $bcg-primary;
+}
+
+.callout-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 28px;
+}
+
+.callout-row-multiline {
+    align-items: flex-start;
+}
+
+.callout-label {
+    width: 92px;
+    flex-shrink: 0;
+    margin-top: 4px;
+}
+
+.callout-expand,
+.callout-select,
+.callout-color,
+.callout-text {
+    flex-grow: 1;
+}
+
+.callout-text {
+    min-height: 70px;
+}
+
+.callout-set-button {
+    padding: 0 10px;
+    height: 28px;
+    flex-shrink: 0;
+}
+
+#callout .pcui-numeric-input,
+#callout .pcui-select-input,
+#callout .pcui-text-input,
+#callout .pcui-text-area-input,
+#callout .pcui-vector-input,
+#callout .pcui-color-picker {
+    margin: 0;
+}
